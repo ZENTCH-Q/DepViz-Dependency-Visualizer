@@ -1,0 +1,11 @@
+
+npm i -g @vscode/vsce
+npm i
+npm run build
+vsce package --allow-missing-repository
+
+mkdir -p vendor-src && cd vendor-src
+git clone https://github.com/tree-sitter/tree-sitter-python.git
+git clone https://github.com/tree-sitter/tree-sitter-javascript.git
+git clone https://github.com/tree-sitter/tree-sitter-typescript.git
+git clone https://github.com/tree-sitter/tree-sitter-go.git

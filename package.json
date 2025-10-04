@@ -1,0 +1,185 @@
+{
+  "name": "depviz",
+  "displayName": "DepViz — Dependency Visualizer",
+  "description": "Visualize function calls, call stacks, and architecture diagrams in VS Code. Python/TS/JS.",
+  "version": "0.1.4",
+  "publisher": "Zentch",
+  "engines": {
+    "vscode": "^1.84.0"
+  },
+  "categories": [
+    "Visualization"
+  ],
+  "icon": "media/depviz-icon.png",
+  "galleryBanner": {
+    "color": "#0e1116",
+    "theme": "dark"
+  },
+  "keywords": [
+    "function call",
+    "call stack",
+    "dependency",
+    "call graph",
+    "import graph",
+    "visualization",
+    "architecture",
+    "code map",
+    "python",
+    "typescript",
+    "javascript",
+    "code diagram",
+    "canvas"
+  ],
+  "activationEvents": [
+    "onCommand:depviz.open",
+    "onCommand:depviz.import",
+    "onCustomEditor:depviz.graph"
+  ],
+  "extensionKind": [
+    "workspace"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "customEditors": [
+      {
+        "viewType": "depviz.graph",
+        "displayName": "DepViz Graph",
+        "priority": "default",
+        "selector": [
+          {
+            "filenamePattern": "*.dv"
+          }
+        ]
+      }
+    ],
+    "configuration": {
+      "title": "DepViz",
+      "properties": {
+        "depviz.maxFiles": {
+          "type": "number",
+          "default": 2000,
+          "minimum": 1,
+          "description": "Maximum number of files to import per operation."
+        },
+        "depviz.maxFileSizeMB": {
+          "type": "number",
+          "default": 1.5,
+          "minimum": 1,
+          "description": "Skip files larger than this size (in megabytes)."
+        },
+        "depviz.includeGlobs": {
+          "type": "array",
+          "default": [
+            "**/*"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "description": "Glob patterns to include when importing from folders."
+        },
+        "depviz.excludeGlobs": {
+          "type": "array",
+          "default": [
+            "**/.git/**",
+            "**/node_modules/**",
+            "**/__pycache__/**"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "description": "Glob patterns to exclude when importing from folders."
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "depviz.open",
+        "title": "DepViz: Open",
+        "icon": {
+          "light": "./media/depviz-light.svg",
+          "dark": "./media/depviz-dark.svg"
+        }
+      },
+      {
+        "command": "depviz.import",
+        "title": "DepViz: Import into Canvas",
+        "icon": {
+          "light": "./media/depviz-light.svg",
+          "dark": "./media/depviz-dark.svg"
+        }
+      },
+      {
+        "command": "depviz.diagnostics",
+        "title": "DepViz: Diagnostics"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "depviz.open",
+        "key": "ctrl+alt+d",
+        "mac": "cmd+alt+d",
+        "when": "editorTextFocus"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "depviz.import",
+          "group": "navigation@100"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "depviz.open",
+          "group": "navigation@100"
+        }
+      ]
+    }
+  },
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false
+    },
+    "virtualWorkspaces": false
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ZENTCH-Q/DepViz-Dependency-Visualizer"
+  },
+  "homepage": "https://github.com/ZENTCH-Q/DepViz-Dependency-Visualizer",
+  "bugs": {
+    "url": "https://github.com/ZENTCH-Q/DepViz-Dependency-Visualizer/issues"
+  },
+  "scripts": {
+    "clean": "rimraf out",
+    "compile": "tsc -p .",
+    "postcompile": "cpy \"src/vendor/*.wasm\" out/vendor",
+    "watch": "tsc -w -p .",
+    "build": "npm run compile",
+    "postinstall": "cpy \"src/vendor/*.wasm\" out/vendor",
+    "vscode:prepublish": "npm run compile && npm run postcompile",
+    "package": "vsce package"
+  },
+  "files": [
+    "out/**",
+    "media/**",
+    "README.md",
+    "LICENSE"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^18.19.0",
+    "@types/vscode": "^1.84.0",
+    "@vscode/vsce": "^3.0.0",
+    "cpy-cli": "^5.0.0",
+    "npm-run-all": "^4.1.5",
+    "rimraf": "^5.0.5",
+    "tree-sitter-cli": "^0.25.10",
+    "tree-sitter-go": "^0.25.0",
+    "tree-sitter-javascript": "^0.25.0",
+    "tree-sitter-python": "^0.25.0",
+    "tree-sitter-typescript": "^0.23.2",
+    "typescript": "^5.5.0",
+    "web-tree-sitter": "^0.25.10"
+  }
+}
