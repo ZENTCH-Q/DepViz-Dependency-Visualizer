@@ -1,5 +1,0 @@
-
-npm i -g @vscode/vsce
-npm i
-npm run build
-vsce package --allow-missing-repository
