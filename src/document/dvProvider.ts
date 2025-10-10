@@ -2,10 +2,12 @@
 import * as vscode from 'vscode';
 import { DvDocument } from './dvDocument';
 import { ImportService } from '../services/import/importService';
-import { registerWebviewMessageHandlers } from '../services/messaging/webviewMessageRouter';
 import { getCustomEditorHtml } from '../services/panel/html';
 import { Totals } from '../shared/types';
 import { GotoSymbolFn } from '../services/navigation/gotoSymbol';
+import { getWebviewAssets } from '../services/panel/assets';
+import { WebviewController } from '../services/webview/WebviewController';
+import type { WebviewControllerOptions } from '../services/webview/WebviewController';
 
 interface ProviderDeps {
   context: vscode.ExtensionContext;
@@ -57,33 +59,9 @@ export class DepvizDvProvider implements vscode.CustomEditorProvider<DvDocument>
       localResourceRoots: [this.deps.context.extensionUri]
     };
 
-    const scriptStateUri   = panel.webview.asWebviewUri(vscode.Uri.joinPath(this.deps.context.extensionUri, 'media', 'webview-state.js'));
-    const scriptUiUri      = panel.webview.asWebviewUri(vscode.Uri.joinPath(this.deps.context.extensionUri, 'media', 'webview-ui.js'));
-    const scriptUri        = panel.webview.asWebviewUri(vscode.Uri.joinPath(this.deps.context.extensionUri, 'media', 'webview.js'));
-    const scriptGeomUri = panel.webview.asWebviewUri(vscode.Uri.joinPath(this.deps.context.extensionUri, 'media', 'webview-geom.js'));
-    const scriptInteractUri = panel.webview.asWebviewUri(vscode.Uri.joinPath(this.deps.context.extensionUri, 'media', 'webview-interact.js'));
-    const scriptArrangeUri = panel.webview.asWebviewUri(vscode.Uri.joinPath(this.deps.context.extensionUri, 'media', 'webview-arrange.js'));
-    const scriptDataUri = panel.webview.asWebviewUri(vscode.Uri.joinPath(this.deps.context.extensionUri, 'media', 'webview-data.js'));
-    const styleUri = panel.webview.asWebviewUri(vscode.Uri.joinPath(this.deps.context.extensionUri, 'media', 'webview.css'));
-    const codiconUri = panel.webview.asWebviewUri(vscode.Uri.joinPath(this.deps.context.extensionUri, 'media', 'codicon.css'));
-    const iconDarkUri = panel.webview.asWebviewUri(vscode.Uri.joinPath(this.deps.context.extensionUri, 'media', 'depviz-dark.svg'));
-    const iconLightUri = panel.webview.asWebviewUri(vscode.Uri.joinPath(this.deps.context.extensionUri, 'media', 'depviz-light.svg'));
+    const assets = getWebviewAssets(this.deps.context, panel.webview);
 
-    panel.webview.html = getCustomEditorHtml(panel, {
-      scriptUris: [
-        scriptStateUri.toString(),
-        scriptUiUri.toString(),
-        scriptUri.toString(),
-        scriptGeomUri.toString(),
-        scriptInteractUri.toString(),
-        scriptArrangeUri.toString(),
-        scriptDataUri.toString()
-      ],
-      styleUri: styleUri.toString(),
-      codiconUri: codiconUri.toString(),
-      iconDark: iconDarkUri.toString(),
-      iconLight: iconLightUri.toString()
-    });
+    panel.webview.html = getCustomEditorHtml(panel, assets);
 
     try {
       const snap = JSON.parse(document.getText());
@@ -94,7 +72,7 @@ export class DepvizDvProvider implements vscode.CustomEditorProvider<DvDocument>
       }
     }
 
-    const sub = registerWebviewMessageHandlers(panel, {
+    const opts: WebviewControllerOptions = {
       context: this.deps.context,
       importService: this.deps.importService,
       totals: this.deps.totals,
@@ -103,11 +81,13 @@ export class DepvizDvProvider implements vscode.CustomEditorProvider<DvDocument>
       document,
       allowSamples: false,
       allowImpactSummary: false
-    });
+    };
+    const controller = new WebviewController(panel, opts);
+    controller.attach();
 
     panel.onDidDispose(() => {
       this.docSubscriptions.get(document)?.dispose();
-      sub.dispose();
+      controller.dispose();
     });
   }
 }

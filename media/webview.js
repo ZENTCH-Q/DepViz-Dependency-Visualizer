@@ -17,6 +17,12 @@
   const S = (D.state = D.state || {});
 
   const state = S;
+  // Ensure sane defaults without relying on any sample payload
+  state.data = state.data || { nodes: [], edges: [] };
+  state.pan = state.pan || { x: 0, y: 0 };
+  state.zoom = (typeof state.zoom === 'number') ? state.zoom : 1;
+  state.typeVisibility = state.typeVisibility || { import: true, call: true };
+  state.moduleBoxes = state.moduleBoxes || new Map();
 
   // Restore theme and canvas state (don't stash full graph in VS state)
   let restoredFromState = false;
@@ -68,11 +74,11 @@
 
   // Init extracted UI (menus + search)
   D.ui && D.ui.initUI && D.ui.initUI(svg, wrapper, VS);
+  // Restore original canvas menu handler (delegates to UI layer)
   wrapper.addEventListener('contextmenu', (e)=>{
     if (e.target !== wrapper && e.target !== svg) return;
     D.ui && D.ui.showCanvasMenu && D.ui.showCanvasMenu(e, VS);
   });
-  const showCtx = (e, items)=> D.ui && D.ui.showCtx && D.ui.showCtx(e, items);
 
   function doDelete(t){
     if (t.kind==='edge' && t.el?._depvizEdge) {
@@ -321,7 +327,7 @@
     const mod = e.ctrlKey || e.metaKey;
     if (mod && e.shiftKey && e.key.toLowerCase()==='a'){ e.preventDefault(); DepViz.arrange?.autoArrangeLikeImport?.(); schedule(); }
   });
-  // Make Escape actually useful: close search else clear slice
+  // Make Escape actually useful: close search else clear slice (only if showing)
   window.addEventListener('keydown', (e)=>{
     if (e.key === 'Escape') {
       try {
@@ -329,15 +335,20 @@
         if (document.getElementById('searchPopup')?.style.display === 'flex') {
           D.ui && D.ui.hideSearchBar && D.ui.hideSearchBar();
         } else {
-          applySliceOverlay(null);
-          schedule();
+          if (globalThis.DepViz?.state?.slice) {
+            applySliceOverlay(null);
+            schedule();
+          }
         }
       } catch {}
     }
   });
   window.addEventListener('keydown', (e)=>{
     const mod = e.ctrlKey || e.metaKey;
-    if (mod && e.shiftKey && e.key.toLowerCase()==='s') { e.preventDefault(); applySliceOverlay(null); schedule(); }
+    if (mod && e.shiftKey && e.key.toLowerCase()==='s') {
+      e.preventDefault();
+      if (globalThis.DepViz?.state?.slice) { applySliceOverlay(null); schedule(); }
+    }
   });
 
 
@@ -351,24 +362,6 @@
     if ((state.data.nodes||[]).some(n => n.kind==='class' && n.parent===modId && !n.docked)) return true;
     // classes with lost methods
     return (state.data.nodes||[]).some(n => n.kind==='class' && n.parent===modId && hasLostMethods(n.id));
-  }
-  function reassembleClassById(clsId){
-    for (const f of (state.data.nodes||[])) {
-      if (f.kind==='func' && f.parent===clsId) {
-        f.docked = true; delete f.x; delete f.y; delete f.dx; delete f.dy;
-      }
-    }
-    schedule();
-  }
-  function reassembleModuleById(modId){
-    for (const n of (state.data.nodes||[])) {
-      if (n.parent===modId) {
-        // pull classes back to the module, and their methods back to each class
-        if (n.kind==='class') { n.docked = true; delete n.x; delete n.y; delete n.dx; delete n.dy; reassembleClassById(n.id); }
-        if (n.kind==='func')  { n.docked = true; delete n.x; delete n.y; delete n.dx; delete n.dy; }
-      }
-    }
-    schedule();
   }
 
   const _postDirty = (D.stateApi && D.stateApi.debounceDirty) ? D.stateApi.debounceDirty(VS) : null;
@@ -465,35 +458,13 @@
   svg.addEventListener('drop', onDrop);
 
   // --- Load & messages ---
-  const DATA_URI = (window.DEPVIZ && window.DEPVIZ.DATA_URI) || window.DATA_URI;
-  const NO_SAMPLE = !!(window.DEPVIZ && window.DEPVIZ.NO_SAMPLE);
-  try {
-    if (!restoredFromState && DATA_URI && !NO_SAMPLE) {
-      fetch(DATA_URI)
-        .then(r => r && r.ok ? r.json() : null)
-        .then(payload => {
-          if (payload) {
-            state.data = payload;
-            DepViz.data?.normalizeNodes?.();
-          }
-          schedule();
-          pushHistory('Initial load');
-        })
-        .catch(()=>{ schedule(); });
-    } else {
-      schedule();
-      pushHistory('Initial');
-    }
-  } catch { schedule(); }
+  try { schedule(); pushHistory('Initial'); } catch { schedule(); }
 
   if (VS) {
     window.addEventListener('message', (event) => {
       try {
         const msg = event.data;
         console.log('[DepViz] message:', msg?.type);
-        if (msg.type === 'sampleData') {
-          S.data = msg.payload; D.data?.normalizeNodes?.(); schedule(); pushHistory('Load sample');
-        }
         if (msg.type === 'addArtifacts') {
           // Pre-position incoming modules so they don't stack and appear near drop
           try { primeSpawnPositions(msg.payload); } catch {}
@@ -515,7 +486,6 @@
         }
       } catch(e){ console.error('DepViz message error:', e); }
     });
-    if (!NO_SAMPLE) VS.postMessage({ type: 'requestSample' });
   }
 
   // ---------- Render ----------
@@ -653,13 +623,12 @@
             { id:'open_file', label:'Open File', run: ()=>{ try { if (VS && m.fsPath){ VS.postMessage({ type:'openAt', fsPath: m.fsPath, line:0, col:0, view:'beside' }); } } catch{} } },
             { id:'slice_out', label:'Impact slice (outbound)', run: ()=>{ const s=computeSlice(m.id,'out'); applySliceOverlay(s); postImpactSummary(s,'out'); } },
             { id:'slice_in',  label:'Reverse slice (inbound)', run: ()=>{ const s=computeSlice(m.id,'in');  applySliceOverlay(s); postImpactSummary(s,'in'); } },
-            { id:'slice_clear', label:'Clear impact slice', run: ()=> applySliceOverlay(null) },
             { id:'delete', label:'Remove from canvas', run: ()=> doDelete({ kind:'module', id: m.id }) }
           ];
           if (hasLostChildrenOfModule(m.id)) {
             items.splice(2, 0, { id:'reassemble_mod', label:'Reassemble children', run: ()=> reassembleModuleById(m.id) });
           }
-          showCtx(e, { kind:'module', id: m.id }, items);
+          D.ui?.showCtx?.(e, items);
         });
       }
 
@@ -700,12 +669,11 @@
               { id:'goto', label:`Go to definition: ${nameOnly}` , run: ()=>{ try { if (VS && n.fsPath){ VS.postMessage({ type:'gotoDef', target: { file: n.fsPath, name: nameOnly }, view:'beside' }); } } catch{} } },
               { id:'slice_out', label:'Impact slice (outbound)', run: ()=>{ const s=computeSlice(n.id,'out'); applySliceOverlay(s); postImpactSummary(s,'out'); } },
               { id:'slice_in',  label:'Reverse slice (inbound)', run: ()=>{ const s=computeSlice(n.id,'in');  applySliceOverlay(s); postImpactSummary(s,'in'); } },
-              { id:'slice_clear', label:'Clear impact slice', run: ()=> applySliceOverlay(null) }
             ];
             if (hasLostMethods(n.id)) {
               items.splice(1, 0, { id:'reassemble_cls', label:'Reassemble children (methods)', run: ()=> reassembleClassById(n.id) });
             }
-            showCtx(e, items);
+            D.ui?.showCtx?.(e, items);
           });
           gClassesFree.appendChild(cg);
           gFuncsFree.appendChild(gmFree);
@@ -753,7 +721,7 @@
         path.addEventListener('click', (ev)=>{ ev.stopPropagation(); /* no highlight */ });
         path.addEventListener('contextmenu', (e)=>{
           const items=[{id:'delete',label:'Remove from canvas',run:()=>doDelete({kind:'edge',el:path})}];
-          showCtx(e, items);
+          D.ui?.showCtx?.(e, items);
         });
       }
 
@@ -785,13 +753,12 @@
         { id:'focus', label:`Focus function: ${nameOnly}`, run: ()=>{ try { state.focusId = n.id; state.focusModuleId = null; applyTypeVisibility(); centerOnNode(n); } catch{} } },
         { id:'slice_out', label:'Impact slice (outbound)', run: ()=>{ const s=computeSlice(n.id,'out'); applySliceOverlay(s); postImpactSummary(s,'out'); } },
         { id:'slice_in',  label:'Reverse slice (inbound)', run: ()=>{ const s=computeSlice(n.id,'in');  applySliceOverlay(s); postImpactSummary(s,'in'); } },
-        { id:'slice_clear', label:'Clear impact slice', run: ()=> applySliceOverlay(null) },
         { id:'delete', label:'Remove from canvas', run: ()=> doDelete({ kind:'func', id: n.id }) }
       ];
       if (!n.docked) {
         items.unshift({ id:'reattach_parent', label:'Re-attach to parent', run: ()=> reattachFuncById(n.id) });
       }
-      showCtx(e, items);
+      D.ui?.showCtx?.(e, items);
     });
     // double-click disabled
     return g;
@@ -866,7 +833,7 @@
       if (hasLostMethods(c.id)) {
         items.splice(1, 0, { id:'reassemble_cls', label:'Reassemble children (methods)', run: ()=> reassembleClassById(c.id) });
       }
-      showCtx(e, items);
+      D.ui?.showCtx?.(e, items);
     });
     return { g, gm };
   }
@@ -1049,7 +1016,7 @@
       const items = callers.slice(0,20).map(caller => ({ id: 'open_'+caller.id, label: (caller.label||caller.id), run: ()=>{
         try { if (VS && caller.fsPath){ const line=(caller.range&&caller.range.line)||0; const col=(caller.range&&caller.range.col)||0; VS.postMessage({ type:'openAt', fsPath: caller.fsPath, line, col, view:'beside' }); } } catch{}
       }}));
-      showCtx(ev, { kind:'peek', id: node.id }, items);
+      D.ui?.showCtx?.(ev, items);
       applyTypeVisibility();
     } catch(e){ console.error('peekCallSites error', e); }
   }
@@ -1314,17 +1281,46 @@
   // Minimal API surface for easier maintenance/testing
   try {
     globalThis.DepViz = globalThis.DepViz || {};
+    const existingUI = globalThis.DepViz.ui || {};
     Object.assign(globalThis.DepViz, {
       state,
       schedule,
       centerOnNode,
       applyTypeVisibility,
       svg: { updateTransform, clientToWorld, groups: { root, gEdgesBack, gEdgesFront, gModules, gClassesDocked, gFuncsDocked, gClassesFree, gFuncsFree, svg, gDocked: gClassesDocked, gFreeFuncs: gFuncsFree } },
-      ui: { applyTypeVisibility, showCtx: (e, items)=> D.ui && D.ui.showCtx && D.ui.showCtx(e, items) },
       util: { textMeasurer, createSvg, createText, resolveCollisions, exportPng, exportSvg, exportJson, exportSnapshotDv },
       consts: { MOD_PAD, MOD_HEAD, SLOT_H, GAP, FUNC_H, FUNC_W_DEFAULT, DETACH_PAD }
+    });
+    const origShowCtx = existingUI.showCtx;
+    globalThis.DepViz.ui = Object.assign({}, existingUI, {
+      applyTypeVisibility,
+      showCtx: function(e, items){
+        try {
+          if (Array.isArray(items)) {
+            const hasSlice = !!(globalThis.DepViz?.state?.slice);
+            const hasFocus = !!(state.focusId || state.focusModuleId);
+            if (hasSlice || hasFocus) {
+              const resetItem = {
+                id: 'reset_highlights',
+                label: 'Reset highlights',
+                run: () => {
+                  try { if (globalThis.DepViz?.state?.slice) applySliceOverlay(null); } catch {}
+                  if (state.focusId || state.focusModuleId) {
+                    state.focusId = null;
+                    state.focusModuleId = null;
+                    applyTypeVisibility();
+                  }
+                  schedule();
+                }
+              };
+              // Put it first so it's easy to find.
+              items = [resetItem, ...items];
+            }
+          }
+        } catch {}
+        return origShowCtx ? origShowCtx(e, items) : undefined;
+      }
     });
   } catch {}
 })();
 
-// Double-click to clear focus removed

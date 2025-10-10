@@ -2,10 +2,12 @@
 import * as vscode from 'vscode';
 import { ParseService } from '../parse/parseService';
 import { ImportService } from '../import/importService';
-import { registerWebviewMessageHandlers } from '../messaging/webviewMessageRouter';
 import { getPanelHtml } from './html';
 import { gotoSymbol, GotoSymbolFn } from '../navigation/gotoSymbol';
 import { GraphArtifacts, Totals } from '../../shared/types';
+import { getWebviewAssets } from './assets';
+import { WebviewController } from '../webview/WebviewController';
+import type { WebviewControllerOptions } from '../webview/WebviewController';
 
 export class PanelManager {
   private panel: vscode.WebviewPanel | undefined;
@@ -92,37 +94,11 @@ export class PanelManager {
       }
     });
 
-    const scriptStateUri   = panel.webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'media', 'webview-state.js'));
-    const scriptUiUri      = panel.webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'media', 'webview-ui.js'));
-    const scriptUri        = panel.webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'media', 'webview.js'));
-    const scriptGeomUri = panel.webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'media', 'webview-geom.js'));
-    const scriptInteractUri = panel.webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'media', 'webview-interact.js'));
-    const scriptArrangeUri = panel.webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'media', 'webview-arrange.js'));
-    const scriptDataUri = panel.webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'media', 'webview-data.js'));
-    const styleUri = panel.webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'media', 'webview.css'));
-    const dataUri = panel.webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'media', 'sampleData.json'));
-    const codiconUri = panel.webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'media', 'codicon.css'));
-    const iconDarkUri = panel.webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'media', 'depviz-dark.svg'));
-    const iconLightUri = panel.webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'media', 'depviz-light.svg'));
+    const assets = getWebviewAssets(this.context, panel.webview, { includeSample: true });
 
-    panel.webview.html = getPanelHtml(panel, {
-      scriptUris: [
-        scriptStateUri.toString(),
-        scriptUiUri.toString(),
-        scriptUri.toString(),
-        scriptGeomUri.toString(),
-        scriptInteractUri.toString(),
-        scriptArrangeUri.toString(),
-        scriptDataUri.toString()
-      ],
-      styleUri: styleUri.toString(),
-      dataUri: dataUri.toString(),
-      codiconUri: codiconUri.toString(),
-      iconDark: iconDarkUri.toString(),
-      iconLight: iconLightUri.toString()
-    });
+    panel.webview.html = getPanelHtml(panel, assets);
 
-    registerWebviewMessageHandlers(panel, {
+    const opts: WebviewControllerOptions = {
       context: this.context,
       importService: this.importService,
       totals: this.totals,
@@ -130,7 +106,9 @@ export class PanelManager {
       gotoSymbol: this.gotoSymbol,
       allowSamples: true,
       allowImpactSummary: true
-    });
+    };
+    const controller = new WebviewController(panel, opts);
+    controller.attach();
 
     return panel;
   }

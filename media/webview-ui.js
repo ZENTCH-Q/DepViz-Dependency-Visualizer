@@ -79,5 +79,5 @@
     return x;
   }
 
-  D.ui = Object.freeze({ initUI, showCanvasMenu, showSearchBar, hideSearchBar, focusFunctionByName });
+  D.ui = Object.freeze({ initUI, showCtx, showCanvasMenu, showSearchBar, hideSearchBar, focusFunctionByName });
 })();
