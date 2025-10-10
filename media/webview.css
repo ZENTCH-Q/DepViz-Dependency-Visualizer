@@ -13,7 +13,11 @@
   --shadow: rgba(0,0,0,0.5);
   --hi-white: #ffffff;
   --hi-cyan: #00ffff;
+
+  /* one knob to slow/speed all theme transitions */
+  --theme-dur: 2.5s;
 }
+
 html[data-theme="light"] {
   --module-bg: #e9edf4;
   --bg: #fafafa;
@@ -21,7 +25,7 @@ html[data-theme="light"] {
   --muted: #666;
   --card: #ffffff;
   --accent: #1a73e8;
-  --outline: #747a80;      /* darker for contrast */
+  --outline: #747a80;
   --grid1: rgba(0,0,0,0.18);
   --grid2: rgba(0,0,0,0.10);
   --hover: #eef3ff;
@@ -30,18 +34,27 @@ html[data-theme="light"] {
   --hi-white: #000;
   --hi-cyan: #06b6d4;
 }
-/* smoothen basic color swaps (helps non-gradient surfaces) */
-body { transition: background-color 1.5s ease-in-out, color 1.5s ease-in-out; }
 
-/* overlay used for cross-fade; background color set inline via JS */
+/* smoothen basic color swaps (non-gradient surfaces) */
+body {
+  transition: background-color var(--theme-dur) ease-in-out,
+              color var(--theme-dur) ease-in-out;
+}
+
+/* overlay used for cross-fade; background set inline via JS */
 .theme-fade {
   position: fixed;
   inset: 0;
   pointer-events: none;
   opacity: 1;
-  transition: opacity 1.5s ease;
+  transition: opacity var(--theme-dur) ease-in-out;
   z-index: 9999;
 }
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}
+
 html, body { height: 100%; }
 body {
   background: var(--bg);
@@ -58,6 +71,10 @@ body {
   padding: 6px 10px; border-radius: 8px;
   box-shadow: 0 4px 16px var(--shadow);
   z-index: 10;
+  transition: background-color var(--theme-dur) ease-in-out,
+              color var(--theme-dur) ease-in-out,
+              box-shadow var(--theme-dur) ease-in-out,
+              border-color var(--theme-dur) ease-in-out;
 }
 
 #themeToggle { cursor: pointer; }
@@ -68,68 +85,75 @@ body {
   border-radius: 6px;
   padding: 4px 8px;
   cursor: pointer;
+  transition: background-color var(--theme-dur) ease-in-out,
+              color var(--theme-dur) ease-in-out,
+              border-color var(--theme-dur) ease-in-out;
 }
 #toolbar button:hover { filter: brightness(1.05); }
 
+/* canvas + dual grid layers for flicker-free cross-fade */
 #canvasWrapper {
   position: absolute; inset: 0;
-  /* shared tunables */
+  overflow: hidden;
   --grid-s1: 28px;   /* fine grid */
   --grid-s2: 140px;  /* coarse grid */
-  --fade-dur: 1.5s;
 }
 
-/* Dark grid layer */
+/* DARK grid layer */
 #canvasWrapper::before,
-/* Light grid layer */
 #canvasWrapper::after {
   content: "";
   position: absolute; inset: 0;
   pointer-events: none;
   will-change: opacity;
-  transition: opacity var(--fade-dur) ease-in-out;
+  transition: opacity var(--theme-dur) ease-in-out;
   z-index: 0;
 }
 
-/* DARK theme visuals (on ::before) */
+/* Dark visuals on ::before */
 #canvasWrapper::before {
-  opacity: 1; /* visible in dark theme */
+  opacity: 1;
   background:
-    radial-gradient(circle at 50% 40%, rgba(0,0,0,0.16), transparent 65%),                /* vignette */
-    radial-gradient(rgba(255,255,255,0.06) 1.2px, transparent 1.2px),                     /* fine dots */
-    radial-gradient(rgba(255,255,255,0.03) 1.2px, transparent 1.2px),                     /* coarse dots */
-    url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAAFklEQVQYV2NkYGD4z0ABYBwTA0YAAHRfBv0F6mZ0AAAAAElFTkSuQmCC'); /* noise */
-  background-size: 100% 100%, var(--grid-s1) var(--grid-s1), var(--grid-s2) var(--grid-s2), 8px 8px;
+    radial-gradient(circle at 50% 40%, rgba(0,0,0,0.16), transparent 65%),
+    radial-gradient(rgba(255,255,255,0.06) 1.2px, transparent 1.2px),
+    radial-gradient(rgba(255,255,255,0.03) 1.2px, transparent 1.2px),
+    url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAAFklEQVQYV2NkYGD4z0ABYBwTA0YAAHRfBv0F6mZ0AAAAAElFTkSuQmCC');
+  background-size:
+    100% 100%, var(--grid-s1) var(--grid-s1), var(--grid-s2) var(--grid-s2), 8px 8px;
   background-position: 0 0, 0 0, 0 0, 0 0;
   background-repeat: no-repeat, repeat, repeat, repeat;
 }
 
-/* LIGHT theme visuals (on ::after) */
+/* Light visuals on ::after (darker dots so they’re visible) */
 #canvasWrapper::after {
-  opacity: 0; /* hidden in dark theme */
+  opacity: 0;
   background:
-    radial-gradient(circle at 50% 40%, rgba(0,0,0,0.08), transparent 65%),                /* vignette */
-    radial-gradient(rgba(0,0,0,0.22) 1.2px, transparent 1.2px),                           /* fine dots darker */
-    radial-gradient(rgba(0,0,0,0.12) 1.2px, transparent 1.2px),                           /* coarse dots darker */
-    url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAAFklEQVQYV2NkYGD4z0ABYBwTA0YAAHRfBv0F6mZ0AAAAAElFTkSuQmCC'); /* noise */
-  background-size: 100% 100%, var(--grid-s1) var(--grid-s1), var(--grid-s2) var(--grid-s2), 8px 8px;
+    radial-gradient(circle at 50% 40%, rgba(0,0,0,0.08), transparent 65%),
+    radial-gradient(rgba(0,0,0,0.22) 1.2px, transparent 1.2px),
+    radial-gradient(rgba(0,0,0,0.12) 1.2px, transparent 1.2px),
+    url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAAFklEQVQYV2NkYGD4z0ABYBwTA0YAAHRfBv0F6mZ0AAAAAElFTkSuQmCC');
+  background-size:
+    100% 100%, var(--grid-s1) var(--grid-s1), var(--grid-s2) var(--grid-s2), 8px 8px;
   background-position: 0 0, 0 0, 0 0, 0 0;
   background-repeat: no-repeat, repeat, repeat, repeat;
-  overflow: hidden;
 }
+
+/* Flip visible layer in light theme */
+html[data-theme="light"] #canvasWrapper::before { opacity: 0; }
+html[data-theme="light"] #canvasWrapper::after  { opacity: 1; }
+
 #canvas { width: 100%; height: 100%; }
 svg, #canvasWrapper, #canvas {
   -webkit-user-select: none;
   user-select: none;
 }
-/* Light theme tweaks for contrast */
-/* Flip which grid layer is visible in light theme */
-html[data-theme="light"] #canvasWrapper::before { opacity: 0; }
-html[data-theme="light"] #canvasWrapper::after  { opacity: 1; }
+
 text, .module-title, .module-badge, .label, .badge {
   pointer-events: none;
   -webkit-user-select: none;
   user-select: none;
+  transition: fill var(--theme-dur) ease-in-out,
+              color var(--theme-dur) ease-in-out;
 }
 
 /* Modules */
@@ -139,7 +163,9 @@ text, .module-title, .module-badge, .label, .badge {
   stroke-width: 1.6;
   rx: 10; ry: 10;
   cursor: grab;
-  transition: fill 1.5s ease-in-out, stroke 1.5s ease-in-out, box-shadow 1.5s ease-in-out;
+  transition: fill var(--theme-dur) ease-in-out,
+              stroke var(--theme-dur) ease-in-out,
+              box-shadow var(--theme-dur) ease-in-out;
 }
 .module.dragging { cursor: grabbing; }
 g.module-group.hover rect.module { stroke: var(--hi-white); }
@@ -149,7 +175,7 @@ g.module-group.selected rect.module { stroke: var(--hi-white); stroke-width: 2.6
 .func-group:hover rect.func { filter: drop-shadow(0 8px 24px var(--shadow)); }
 .module-title { font-size: 12px; fill: var(--fg); font-weight: 600; }
 .module-badge { font-size: 10px; fill: var(--muted); }
-.module-toggle { cursor: pointer; fill: var(--muted); }
+.module-toggle { cursor: pointer; fill: var(--muted); transition: fill var(--theme-dur) ease-in-out; }
 .module-toggle:hover { fill: var(--fg); }
 
 /* Classes (nested containers) */
@@ -159,7 +185,9 @@ g.module-group.selected rect.module { stroke: var(--hi-white); stroke-width: 2.6
   stroke-width: 1.4;
   rx: 8; ry: 8;
   cursor: grab;
-  transition: fill 1.5s ease-in-out, stroke 1.5s ease-in-out, box-shadow 1.5s ease-in-out;
+  transition: fill var(--theme-dur) ease-in-out,
+              stroke var(--theme-dur) ease-in-out,
+              box-shadow var(--theme-dur) ease-in-out;
 }
 .class.dragging { cursor: grabbing; }
 
@@ -170,29 +198,9 @@ g.module-group.selected rect.module { stroke: var(--hi-white); stroke-width: 2.6
   stroke-width: 1.4;
   rx: 8; ry: 8;
   cursor: grab;
-  transition: fill 1.5s ease-in-out, stroke 1.5s ease-in-out, box-shadow 1.5s ease-in-out;
-}
-.module-title, .module-badge, .label, .badge {
-  transition: fill 1.5s ease-in-out, color 1.5s ease-in-out;
-}
-
-/* Edges + arrows also glide to their theme colors */
-.edge { transition: stroke 1.5s ease-in-out; }
-.edge-arrow { transition: color 1.5s ease-in-out; }
-
-/* Toolbar / legends / popups keep in sync too */
-#toolbar, #legend, #sliceDepth, #searchPopup, .context-menu {
-  transition:
-    background-color 1.5s ease-in-out,
-    color 1.5s ease-in-out,
-    border-color 1.5s ease-in-out,
-    box-shadow 1.5s ease-in-out;
-}
-#toolbar button, #searchControls button {
-  transition:
-    background-color 1.5s ease-in-out,
-    color 1.5s ease-in-out,
-    border-color 1.5s ease-in-out;
+  transition: fill var(--theme-dur) ease-in-out,
+              stroke var(--theme-dur) ease-in-out,
+              box-shadow var(--theme-dur) ease-in-out;
 }
 .func.dragging { cursor: grabbing; }
 g.func-group.hover rect.func { stroke-width: 1.8; stroke: var(--hi-white); }
@@ -201,7 +209,12 @@ g.func-group.selected rect.func { stroke-width: 2.6; stroke: var(--hi-white); }
 .badge { font-size: 10px; fill: var(--muted); }
 
 /* Edges */
-.edge { fill: none; stroke-width: 2.2; pointer-events: stroke; }
+.edge {
+  fill: none;
+  stroke-width: 2.2;
+  pointer-events: stroke;
+  transition: stroke var(--theme-dur) ease-in-out;
+}
 .edge.import { stroke-dasharray: 8 6; stroke-linecap: butt; }
 .edge.call   { stroke-dasharray: none; stroke-linecap: round; }
 .edge.unresolved { opacity: .35; stroke-dasharray: 3 3; }
@@ -211,7 +224,7 @@ g.func-group.selected rect.func { stroke-width: 2.6; stroke: var(--hi-white); }
 .edge.hidden { opacity: 0; pointer-events: none; }
 .edge-arrow.transparent { opacity: 0; pointer-events: none; }
 
-.edge-arrow { fill: currentColor; stroke: none; pointer-events: none; }
+.edge-arrow { fill: currentColor; stroke: none; pointer-events: none; transition: color var(--theme-dur) ease-in-out; }
 .edge-arrow.import { color: #a8b1ff; }
 .edge-arrow.call   { color: #86efac; }
 
@@ -231,6 +244,10 @@ g.func-group.selected rect.func { stroke-width: 2.6; stroke: var(--hi-white); }
   box-shadow: 0 4px 16px var(--shadow);
   display: flex; gap: 12px; align-items: center;
   user-select: none;
+  transition: background-color var(--theme-dur) ease-in-out,
+              color var(--theme-dur) ease-in-out,
+              box-shadow var(--theme-dur) ease-in-out,
+              border-color var(--theme-dur) ease-in-out;
 }
 
 /* Depth slider */
@@ -240,6 +257,10 @@ g.func-group.selected rect.func { stroke-width: 2.6; stroke: var(--hi-white); }
   box-shadow: 0 4px 16px var(--shadow);
   display: flex; align-items: center; gap: 8px;
   user-select: none;
+  transition: background-color var(--theme-dur) ease-in-out,
+              color var(--theme-dur) ease-in-out,
+              box-shadow var(--theme-dur) ease-in-out,
+              border-color var(--theme-dur) ease-in-out;
 }
 #sliceDepth input { width: 120px; }
 #sliceDepth label { color: var(--muted); font-size: 12px; }
@@ -252,7 +273,7 @@ g.func-group.selected rect.func { stroke-width: 2.6; stroke: var(--hi-white); }
 .edge.import, .legend-path.import { stroke: #a8b1ff; }
 .edge.call,   .legend-path.call   { stroke: #86efac; }
 
-/* Snippet panel placeholder (unchanged) */
+/* Snippet panel placeholder */
 #snippet { display:none; }
 
 /* Context menu */
@@ -266,6 +287,10 @@ g.func-group.selected rect.func { stroke-width: 2.6; stroke: var(--hi-white); }
   z-index: 100;
   padding: 4px;
   min-width: 120px;
+  transition: background-color var(--theme-dur) ease-in-out,
+              color var(--theme-dur) ease-in-out,
+              box-shadow var(--theme-dur) ease-in-out,
+              border-color var(--theme-dur) ease-in-out;
 }
 .context-menu button {
   display: block;
@@ -292,9 +317,13 @@ g.func-group.selected rect.func { stroke-width: 2.6; stroke: var(--hi-white); }
   padding: 8px 10px;
   box-shadow: 0 8px 28px var(--shadow);
   z-index: 120;
-  display: none; /* will be set to flex when open */
+  display: none; /* set to flex when open */
   align-items: center;
   gap: 10px;
+  transition: background-color var(--theme-dur) ease-in-out,
+              color var(--theme-dur) ease-in-out,
+              border-color var(--theme-dur) ease-in-out,
+              box-shadow var(--theme-dur) ease-in-out;
 }
 #searchPopup input {
   width: 360px; max-width: 60vw;
@@ -302,5 +331,15 @@ g.func-group.selected rect.func { stroke-width: 2.6; stroke: var(--hi-white); }
   font-size: 14px;
 }
 #searchControls { margin-top: 0; display: flex; gap: 8px; align-items: center; }
-#searchControls button { background: var(--hover); color: var(--fg); border: 1px solid var(--outline); border-radius: 4px; padding: 2px 8px; cursor: pointer; }
+#searchControls button {
+  background: var(--hover);
+  color: var(--fg);
+  border: 1px solid var(--outline);
+  border-radius: 4px;
+  padding: 2px 8px;
+  cursor: pointer;
+  transition: background-color var(--theme-dur) ease-in-out,
+              color var(--theme-dur) ease-in-out,
+              border-color var(--theme-dur) ease-in-out;
+}
 #searchControls #searchCount { color: var(--muted); min-width: 48px; text-align: center; }
