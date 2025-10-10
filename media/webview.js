@@ -303,15 +303,31 @@
     state.lastCursorWorld = { x: wx, y: wy };
   });
 
-  // No background click behavior (highlight/focus disabled)
-
   // --- Theme toggle ---
+  function smoothThemeSwap(next){
+    // Respect reduced motion
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      document.documentElement.setAttribute('data-theme', next);
+      return;
+    }
+    // Snapshot current bg to fade from (wrapper to cover grid area)
+    const wrap = document.getElementById('canvasWrapper');
+    const currentBg = getComputedStyle(wrap || document.body).backgroundColor || '#0e1116';
+    const overlay = document.createElement('div');
+    overlay.className = 'theme-fade';
+    overlay.style.background = currentBg;
+    document.body.appendChild(overlay);
+    document.documentElement.setAttribute('data-theme', next);
+    requestAnimationFrame(()=>{ overlay.style.opacity = '0'; });
+    overlay.addEventListener('transitionend', ()=> overlay.remove(), { once: true });
+  }
+
   themeToggle.addEventListener('click', ()=>{
     const dark = themeToggle.getAttribute('data-icon-dark');
     const light = themeToggle.getAttribute('data-icon-light');
     const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
     const next = isDark ? 'light' : 'dark';
-    document.documentElement.setAttribute('data-theme', next);
+    smoothThemeSwap(next);
     themeToggle.setAttribute('src', next === 'light' ? light : dark);
     try { VS?.setState?.({ theme: next }); } catch {}
   });

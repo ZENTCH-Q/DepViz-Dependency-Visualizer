@@ -22,13 +22,25 @@ html[data-theme="light"] {
   --card: #ffffff;
   --accent: #1a73e8;
   --outline: #747a80;      /* darker for contrast */
-  --grid1: rgba(0,0,0,0.12);
-  --grid2: rgba(0,0,0,0.08);
+  --grid1: rgba(0,0,0,0.18);
+  --grid2: rgba(0,0,0,0.10);
   --hover: #eef3ff;
   --selected: #0ea5e9;
   --shadow: rgba(0,0,0,0.15);
   --hi-white: #000;
   --hi-cyan: #06b6d4;
+}
+/* smoothen basic color swaps (helps non-gradient surfaces) */
+body { transition: background-color 1.5s ease-in-out, color 1.5s ease-in-out; }
+
+/* overlay used for cross-fade; background color set inline via JS */
+.theme-fade {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 1;
+  transition: opacity 1.5s ease;
+  z-index: 9999;
 }
 html, body { height: 100%; }
 body {
@@ -61,19 +73,48 @@ body {
 
 #canvasWrapper {
   position: absolute; inset: 0;
-  /* tunables */
-  --grid-a: 0.06;   /* primary dot alpha (dark) */
-  --grid-b: 0.03;   /* secondary dot alpha (dark) */
-  --grid-s1: 28px;  /* fine grid size */
-  --grid-s2: 140px; /* coarse grid size */
-  --vignette: radial-gradient(circle at 50% 40%, rgba(0,0,0,0.16), transparent 65%);
-  /* calm, layered background */
+  /* shared tunables */
+  --grid-s1: 28px;   /* fine grid */
+  --grid-s2: 140px;  /* coarse grid */
+  --fade-dur: 1.5s;
+}
+
+/* Dark grid layer */
+#canvasWrapper::before,
+/* Light grid layer */
+#canvasWrapper::after {
+  content: "";
+  position: absolute; inset: 0;
+  pointer-events: none;
+  will-change: opacity;
+  transition: opacity var(--fade-dur) ease-in-out;
+  z-index: 0;
+}
+
+/* DARK theme visuals (on ::before) */
+#canvasWrapper::before {
+  opacity: 1; /* visible in dark theme */
   background:
-    var(--vignette),
-    radial-gradient(rgba(255,255,255,var(--grid-a)) 1.2px, transparent 1.2px),
-    radial-gradient(rgba(255,255,255,var(--grid-b)) 1.2px, transparent 1.2px);
-  background-size: 100% 100%, var(--grid-s1) var(--grid-s1), var(--grid-s2) var(--grid-s2);
-  background-position: 0 0, 0 0, 0 0;
+    radial-gradient(circle at 50% 40%, rgba(0,0,0,0.16), transparent 65%),                /* vignette */
+    radial-gradient(rgba(255,255,255,0.06) 1.2px, transparent 1.2px),                     /* fine dots */
+    radial-gradient(rgba(255,255,255,0.03) 1.2px, transparent 1.2px),                     /* coarse dots */
+    url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAAFklEQVQYV2NkYGD4z0ABYBwTA0YAAHRfBv0F6mZ0AAAAAElFTkSuQmCC'); /* noise */
+  background-size: 100% 100%, var(--grid-s1) var(--grid-s1), var(--grid-s2) var(--grid-s2), 8px 8px;
+  background-position: 0 0, 0 0, 0 0, 0 0;
+  background-repeat: no-repeat, repeat, repeat, repeat;
+}
+
+/* LIGHT theme visuals (on ::after) */
+#canvasWrapper::after {
+  opacity: 0; /* hidden in dark theme */
+  background:
+    radial-gradient(circle at 50% 40%, rgba(0,0,0,0.08), transparent 65%),                /* vignette */
+    radial-gradient(rgba(0,0,0,0.22) 1.2px, transparent 1.2px),                           /* fine dots darker */
+    radial-gradient(rgba(0,0,0,0.12) 1.2px, transparent 1.2px),                           /* coarse dots darker */
+    url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAAFklEQVQYV2NkYGD4z0ABYBwTA0YAAHRfBv0F6mZ0AAAAAElFTkSuQmCC'); /* noise */
+  background-size: 100% 100%, var(--grid-s1) var(--grid-s1), var(--grid-s2) var(--grid-s2), 8px 8px;
+  background-position: 0 0, 0 0, 0 0, 0 0;
+  background-repeat: no-repeat, repeat, repeat, repeat;
   overflow: hidden;
 }
 #canvas { width: 100%; height: 100%; }
@@ -82,21 +123,9 @@ svg, #canvasWrapper, #canvas {
   user-select: none;
 }
 /* Light theme tweaks for contrast */
-html[data-theme="light"] #canvasWrapper {
-  --vignette: radial-gradient(circle at 50% 40%, rgba(0,0,0,0.06), transparent 65%);
-  --grid-a: 0.08;
-  --grid-b: 0.04;
-}
-
-/* Optional: ultra-low noise to reduce banding */
-#canvasWrapper::after {
-  content: "";
-  position: absolute; inset: 0;
-  pointer-events: none;
-  opacity: .035;
-  background-image: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAAFklEQVQYV2NkYGD4z0ABYBwTA0YAAHRfBv0F6mZ0AAAAAElFTkSuQmCC');
-  background-size: 8px 8px;
-}
+/* Flip which grid layer is visible in light theme */
+html[data-theme="light"] #canvasWrapper::before { opacity: 0; }
+html[data-theme="light"] #canvasWrapper::after  { opacity: 1; }
 text, .module-title, .module-badge, .label, .badge {
   pointer-events: none;
   -webkit-user-select: none;
@@ -110,6 +139,7 @@ text, .module-title, .module-badge, .label, .badge {
   stroke-width: 1.6;
   rx: 10; ry: 10;
   cursor: grab;
+  transition: fill 1.5s ease-in-out, stroke 1.5s ease-in-out, box-shadow 1.5s ease-in-out;
 }
 .module.dragging { cursor: grabbing; }
 g.module-group.hover rect.module { stroke: var(--hi-white); }
@@ -129,6 +159,7 @@ g.module-group.selected rect.module { stroke: var(--hi-white); stroke-width: 2.6
   stroke-width: 1.4;
   rx: 8; ry: 8;
   cursor: grab;
+  transition: fill 1.5s ease-in-out, stroke 1.5s ease-in-out, box-shadow 1.5s ease-in-out;
 }
 .class.dragging { cursor: grabbing; }
 
@@ -139,6 +170,29 @@ g.module-group.selected rect.module { stroke: var(--hi-white); stroke-width: 2.6
   stroke-width: 1.4;
   rx: 8; ry: 8;
   cursor: grab;
+  transition: fill 1.5s ease-in-out, stroke 1.5s ease-in-out, box-shadow 1.5s ease-in-out;
+}
+.module-title, .module-badge, .label, .badge {
+  transition: fill 1.5s ease-in-out, color 1.5s ease-in-out;
+}
+
+/* Edges + arrows also glide to their theme colors */
+.edge { transition: stroke 1.5s ease-in-out; }
+.edge-arrow { transition: color 1.5s ease-in-out; }
+
+/* Toolbar / legends / popups keep in sync too */
+#toolbar, #legend, #sliceDepth, #searchPopup, .context-menu {
+  transition:
+    background-color 1.5s ease-in-out,
+    color 1.5s ease-in-out,
+    border-color 1.5s ease-in-out,
+    box-shadow 1.5s ease-in-out;
+}
+#toolbar button, #searchControls button {
+  transition:
+    background-color 1.5s ease-in-out,
+    color 1.5s ease-in-out,
+    border-color 1.5s ease-in-out;
 }
 .func.dragging { cursor: grabbing; }
 g.func-group.hover rect.func { stroke-width: 1.8; stroke: var(--hi-white); }
