@@ -92,7 +92,9 @@ export class PanelManager {
       }
     });
 
-    const scriptUri = panel.webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'media', 'webview.js'));
+    const scriptStateUri   = panel.webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'media', 'webview-state.js'));
+    const scriptUiUri      = panel.webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'media', 'webview-ui.js'));
+    const scriptUri        = panel.webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'media', 'webview.js'));
     const scriptGeomUri = panel.webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'media', 'webview-geom.js'));
     const scriptInteractUri = panel.webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'media', 'webview-interact.js'));
     const scriptArrangeUri = panel.webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'media', 'webview-arrange.js'));
@@ -105,6 +107,8 @@ export class PanelManager {
 
     panel.webview.html = getPanelHtml(panel, {
       scriptUris: [
+        scriptStateUri.toString(),
+        scriptUiUri.toString(),
         scriptUri.toString(),
         scriptGeomUri.toString(),
         scriptInteractUri.toString(),

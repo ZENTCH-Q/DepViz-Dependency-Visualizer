@@ -1,16 +1,12 @@
 // media/webview.js
 
 (function(){
-  // Stable VS Code handle
-  const VS = globalThis.vscode; // set by nonce'd boot script in extension.ts
-  console.log('[DepViz] webview booted, VS present:', !!VS);
+  const VS = globalThis.vscode;
+  const D = globalThis.DepViz || (globalThis.DepViz = {});
 
-  // DOM
   const svg = document.getElementById('canvas');
   const wrapper = document.getElementById('canvasWrapper');
   const themeToggle = document.getElementById('themeToggle');
-  const help = document.getElementById('help');
-  const toolbar = document.getElementById('toolbar');
   const btnArrange = document.getElementById('btnArrange');
   const btnClear = document.getElementById('btnClear');
   // Layout constants
@@ -18,27 +14,9 @@
   const FUNC_H = 42, FUNC_W_DEFAULT = 180;
   const DETACH_PAD = 24;
 
-  // State
-  let state = {
-    pan: {x:0, y:0},
-    zoom: 1,
-    data: { nodes: [], edges: [] },
-    moduleBoxes: new Map(),
-    needsFrame: false,
-    typeVisibility: { import: true, call: true },
-    focusId: null,
-    focusModuleId: null,
-    lastCursorWorld: { x: 0, y: 0 },
-    spawnSeq: 0,
-    lastSpawnAtMs: 0,
-    spawnOrigin: null,
-    searchHit: null,
-    searchQuery: '',
-    searchMatches: [],
-    searchIndex: -1,
-    _hist: [],
-    _histIndex: -1
-  };
+  const S = (D.state = D.state || {});
+
+  const state = S;
 
   // Restore theme and canvas state (don't stash full graph in VS state)
   let restoredFromState = false;
@@ -51,8 +29,8 @@
         ? themeToggle.getAttribute('data-icon-light')
         : themeToggle.getAttribute('data-icon-dark'));
     }
-    if (s?.pan) state.pan = s.pan;
-    if (typeof s?.zoom === 'number') state.zoom = s.zoom;
+    if (s?.pan) S.pan = s.pan;
+    if (typeof s?.zoom === 'number') S.zoom = s.zoom;
     restoredFromState = !!(s && (s.pan || typeof s.zoom === 'number' || s.theme));
   } catch {}
 
@@ -88,113 +66,14 @@
   let edgesByFrom = new Map();
   let edgesByTo = new Map();
 
-  // --- Context menu (canvas, node, edge) ---
-  let ctxTarget = null;
-  const ctx = document.createElement('div');
-  ctx.className = 'context-menu';
-  document.body.appendChild(ctx);
-  const ctxSub = document.createElement('div');
-  ctxSub.className = 'context-menu context-sub';
-  document.body.appendChild(ctxSub);
-  window.addEventListener('click', ()=>{ ctx.style.display='none'; });
-  window.addEventListener('click', ()=>{ ctxSub.style.display='none'; });
-  window.addEventListener('contextmenu', ()=>{ /* let handlers decide */ });
-  function showCtx(e, target, items){
-    try { e.preventDefault(); } catch {}
-    ctxTarget = target;
-    ctx.innerHTML = '';
-    for (const it of (items||[])){
-      const btn = document.createElement('button');
-      btn.textContent = it.label;
-      btn.setAttribute('data-act', it.id);
-      let clickHandler = it.run;
-      // Normalize known items to Arcflow-like behavior
-      if (it && it.id === 'search_fn') {
-        btn.textContent = 'Search function...';
-        clickHandler = ()=>{ try { showSearchBar(); } catch{} };
-      }
-      // Default click closes menu; special items may override
-      if (it.id !== 'export_submenu') {
-        btn.addEventListener('click', ()=>{ try { clickHandler && clickHandler(); } finally { ctx.style.display='none'; } });
-      }
-      // Hover submenu support (cascade without hiding main menu)
-      if (it.submenu && Array.isArray(it.submenu)){
-        btn.addEventListener('mouseenter', ()=>{
-          try {
-            const r = btn.getBoundingClientRect();
-            showCascade(r.right + 8, r.top, it.submenu);
-          } catch {}
-        });
-      }
-      // Back-compat: Export submenu via id
-      if (it.id === 'export_submenu'){
-        btn.textContent = 'Export';
-        btn.addEventListener('click', (ev)=>{
-          ev.preventDefault(); ev.stopPropagation();
-          try {
-            const r = btn.getBoundingClientRect();
-            const sub = [
-              { id:'export_png', label:'PNG', run: ()=> exportPng() },
-              { id:'export_json', label:'JSON', run: ()=> exportJson() },
-              { id:'export_svg', label:'SVG', run: ()=> exportSvg() },
-              { id:'export_dv',  label:'Save Snapshot (.dv)', run: ()=> exportSnapshotDv() }
-            ];
-            showCascade(r.right + 8, r.top, sub);
-          } catch {}
-        });
-      }
-      ctx.appendChild(btn);
-    }
-    ctx.style.display='block'; ctx.style.left = e.clientX+'px'; ctx.style.top = e.clientY+'px';
-  }
-  function showCascade(x, y, items){
-    try {
-      ctxSub.innerHTML = '';
-      for (const it of (items||[])){
-        const btn = document.createElement('button');
-        btn.textContent = it.label;
-        btn.setAttribute('data-act', it.id);
-        btn.addEventListener('click', ()=>{ try { it.run && it.run(); } finally { ctx.style.display='none'; ctxSub.style.display='none'; } });
-        ctxSub.appendChild(btn);
-      }
-      ctxSub.style.display = 'block'; ctxSub.style.left = Math.round(x)+'px'; ctxSub.style.top = Math.round(y)+'px';
-    } catch {}
-  }
-  // Right-click on canvas background
+  // Init extracted UI (menus + search)
+  D.ui && D.ui.initUI && D.ui.initUI(svg, wrapper, VS);
   wrapper.addEventListener('contextmenu', (e)=>{
     if (e.target !== wrapper && e.target !== svg) return;
-    // decide toggle label based on current module states
-    const mods = (state.data.nodes || []).filter(n => n.kind === 'module');
-    const allCollapsed = mods.length > 0 && mods.every(m => !!m.collapsed);
-    const toggleLabel = allCollapsed ? 'Expand all cards' : 'Collapse all cards';
-    const toggleRun = ()=>{ try { DepViz.data?.setAllModulesCollapsed?.(!allCollapsed); } finally { schedule(); } };
-    // decide whether to show "clear" items
-    const hasFocus = !!(state.focusId || state.focusModuleId);
-    const hasSlice = !!(globalThis.DepViz?.state?.slice);
-    const exportItems = [
-      { id:'export_png', label:'PNG', run: ()=> exportPng() },
-      { id:'export_json', label:'JSON', run: ()=> exportJson() },
-      { id:'export_svg', label:'SVG', run: ()=> exportSvg() },
-      { id:'export_dv',  label:'Save Snapshot (.dv)', run: ()=> exportSnapshotDv() }
-    ];
-    const items = [];
-    if (hasFocus) {
-      items.push({ id:'clear_focus', label:'Clear focus', run: ()=>{ try { state.focusId = null; state.focusModuleId = null; applyTypeVisibility(); } finally { schedule(); } } });
-    }
-    if (hasSlice) {
-      items.push({ id:'slice_clear', label:'Clear impact slice', run: ()=>{ try { applySliceOverlay(null); } finally { schedule(); } } });
-    }
-    items.push(
-      { id:'arrange', label:'Auto layout (Ctrl/Cmd+Shift+A)', run: ()=>{ DepViz.arrange?.autoArrangeByFolders?.(); schedule(); } },
-      { id:'toggle_collapse_all', label: toggleLabel, run: toggleRun },
-      { id:'clear', label:'Clear', run: ()=>{ state.data = { nodes: [], edges: [] }; DepViz.data?.normalizeNodes?.(); schedule(); VS && VS.postMessage({ type:'clearCanvas' }); } },
-      { id:'export_submenu', label:'Export', run: ()=>{} },
-      { id:'search_fn', label:'Search function...', run: ()=>{ try { const q = prompt('Search function name'); if (!q) return; focusFunctionByName(q); } catch{} } },
-      { id:'import_json', label:'Import Artifacts (.json)', run: ()=> VS && VS.postMessage({ type:'requestImportJson' }) },
-      { id:'import_dv',   label:'Load Snapshot (.dv)',     run: ()=> VS && VS.postMessage({ type:'requestImportSnapshot' }) },
-    );
-    showCtx(e, { kind:'canvas' }, items);
+    D.ui && D.ui.showCanvasMenu && D.ui.showCanvasMenu(e, VS);
   });
+  const showCtx = (e, items)=> D.ui && D.ui.showCtx && D.ui.showCtx(e, items);
+
   function doDelete(t){
     if (t.kind==='edge' && t.el?._depvizEdge) {
       const e = t.el._depvizEdge;
@@ -251,22 +130,8 @@
   function nextEdgeOpacity() { const c = palette[colorIdx++ % palette.length]; return c.opacity; }
 
   // --- Scheduler / transforms ---
-  function schedule() {
-    if (state.needsFrame) return;
-    state.needsFrame = true;
-    requestAnimationFrame(() => {
-      state.needsFrame = false;
-      try { renderAll(); } catch (e) { console.error('DepViz render error:', e); }
-      try {
-        VS?.setState?.({
-          theme: document.documentElement.getAttribute('data-theme') || 'dark',
-          pan: state.pan,
-          zoom: state.zoom
-        });
-      } catch {}
-      try { postDirtyEditDebounced(); } catch {}
-    });
-  }
+  function schedule(){ if (S.needsFrame) return; S.needsFrame = true; requestAnimationFrame(()=>{ S.needsFrame=false; try { renderAll(); } catch(e){ console.error(e); } try { VS?.setState?.({ theme: document.documentElement.getAttribute('data-theme')||'dark', pan:S.pan, zoom:S.zoom }); } catch{} try { _postDirty && _postDirty(); } catch{} }); }
+  D.schedule = schedule;
 
   // --- Impact Slice (blast-radius) ----------------------------------------
   function computeSlice(startId, dir='out'){ // dir: 'out' | 'in'
@@ -446,7 +311,7 @@
   });
 
   // Toolbar
-  btnArrange?.addEventListener('click', ()=>{ DepViz.arrange?.autoArrangeByFolders?.(); schedule(); });
+  btnArrange?.addEventListener('click', ()=>{ DepViz.arrange?.autoArrangeLikeImport?.(); schedule(); });
   btnClear?.addEventListener('click', ()=>{ state.data = { nodes: [], edges: [] }; DepViz.data?.normalizeNodes?.(); schedule(); VS && VS.postMessage({ type: 'clearCanvas' }); });
 
   // Export/Import moved to canvas context menu
@@ -454,7 +319,7 @@
   // Hotkeys
   window.addEventListener('keydown', (e)=>{
     const mod = e.ctrlKey || e.metaKey;
-    if (mod && e.shiftKey && e.key.toLowerCase()==='a'){ e.preventDefault(); DepViz.arrange?.autoArrangeByFolders?.(); schedule(); }
+    if (mod && e.shiftKey && e.key.toLowerCase()==='a'){ e.preventDefault(); DepViz.arrange?.autoArrangeLikeImport?.(); schedule(); }
   });
   // Make Escape actually useful: close search else clear slice
   window.addEventListener('keydown', (e)=>{
@@ -462,7 +327,7 @@
       try {
         // if search is open, hide it; else clear impact slice
         if (document.getElementById('searchPopup')?.style.display === 'flex') {
-          hideSearchBar();
+          D.ui && D.ui.hideSearchBar && D.ui.hideSearchBar();
         } else {
           applySliceOverlay(null);
           schedule();
@@ -475,17 +340,7 @@
     if (mod && e.shiftKey && e.key.toLowerCase()==='s') { e.preventDefault(); applySliceOverlay(null); schedule(); }
   });
 
- let _dirtyTimer = null;
- let _lastSentHash = '';
- function snapshotNow(){
-   return {
-     version: 1,
-     pan: state.pan,
-     zoom: state.zoom,
-     typeVisibility: state.typeVisibility,
-     data: state.data
-   };
- }
+
   function hasLostMethods(clsId){
     return (state.data.nodes||[]).some(n => n.kind==='func' && n.parent===clsId && !n.docked);
   }
@@ -515,63 +370,22 @@
     }
     schedule();
   }
- function applySnapshot(snap){
-   try {
-     if (!snap) return;
-     state.pan = snap.pan || {x:0,y:0};
-     state.zoom = typeof snap.zoom==='number' ? snap.zoom : 1;
-     state.typeVisibility = snap.typeVisibility || { import:true, call:true };
-     state.data = snap.data || { nodes:[], edges:[] };
-     DepViz.data?.normalizeNodes?.();
-     schedule();
-   } catch(e){ console.error('applySnapshot error', e); }
- }
- function pushHistory(label='Edit'){
-   try {
-     const snap = snapshotNow();
-     const text = JSON.stringify(snap);
-     const hash = simpleHash(text);
-     if (hash === _lastSentHash) return; // no-op
-     // truncate redo branch
-     if (state._histIndex < state._hist.length - 1) state._hist = state._hist.slice(0, state._histIndex + 1);
-     state._hist.push(snap);
-     state._histIndex = state._hist.length - 1;
-     const MAX_HIST = 100;
-     if (state._hist.length > MAX_HIST) { state._hist.shift(); state._histIndex--; }
-     _lastSentHash = hash;
-     VS && VS.postMessage({ type: 'edit', payload: snap, label });
-   } catch {}
- }
- function postDirtyEditDebounced() {
-   if (!VS) return;
-   if (_dirtyTimer) cancelAnimationFrame(_dirtyTimer);
-   _dirtyTimer = requestAnimationFrame(() => {
-     const snapshot = snapshotNow();
-     const text = JSON.stringify(snapshot);
-     const hash = simpleHash(text);
-     if (hash !== _lastSentHash) {
-      pushHistory('Graph change');
-     }
-   });
- }
+
+  const _postDirty = (D.stateApi && D.stateApi.debounceDirty) ? D.stateApi.debounceDirty(VS) : null;
+  const pushHistory = (label)=> D.stateApi && D.stateApi.pushHistory && D.stateApi.pushHistory(VS,label);
+  const applySnapshot = (snap)=> D.stateApi && D.stateApi.applySnapshot && D.stateApi.applySnapshot(snap);
  function simpleHash(s){
    let h=2166136261>>>0; for(let i=0;i<s.length;i++){ h^=s.charCodeAt(i); h=Math.imul(h,16777619); }
    return (h>>>0).toString(16);
  }
 
- window.addEventListener('keydown', (e)=>{
-   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
-     e.preventDefault();
-     const snapshot = {
-       version: 1,
-       pan: state.pan,
-       zoom: state.zoom,
-       typeVisibility: state.typeVisibility,
-       data: state.data
-     };
-     VS && VS.postMessage({ type: 'saveSnapshot', payload: snapshot });
-   }
- });
+  window.addEventListener('keydown', (e)=>{
+    if ((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==='s'){
+      e.preventDefault();
+      const snap = D.stateApi.snapshot ? D.stateApi.snapshot() : { version:1, pan:S.pan, zoom:S.zoom, typeVisibility:S.typeVisibility, data:S.data };
+      VS && VS.postMessage({ type:'saveSnapshot', payload:snap });
+    }
+  });
   window.addEventListener('keydown', (e)=>{
     const stepPan = 40, stepZoom = 0.1;
     if (['+', '='].includes(e.key)) { state.zoom = Math.min(3, state.zoom + stepZoom); updateTransform(); }
@@ -599,13 +413,11 @@
      VS && VS.postMessage({ type:'edit', payload: snap, label:'Redo' });
    } catch {}
  }
- window.addEventListener('keydown', (e)=>{
-   const mod = e.ctrlKey || e.metaKey;
-   const k = e.key.toLowerCase();
-   if (!mod) return;
-   if (k === 'z' && !e.shiftKey){ e.preventDefault(); doUndo(); }
-   else if (k === 'y' || (k === 'z' && e.shiftKey)){ e.preventDefault(); doRedo(); }
- });
+  window.addEventListener('keydown', (e)=>{
+    const mod=e.ctrlKey||e.metaKey; const k=e.key.toLowerCase(); if(!mod) return;
+    if(k==='z'&&!e.shiftKey){ e.preventDefault(); D.stateApi && D.stateApi.undo && D.stateApi.undo(VS); D.schedule && D.schedule(); }
+    else if(k==='y'||(k==='z'&&e.shiftKey)){ e.preventDefault(); D.stateApi && D.stateApi.redo && D.stateApi.redo(VS); D.schedule && D.schedule(); }
+  });
   // --- Drag & Drop import ---
   ['dragenter','dragover'].forEach(ev => {
     const handler = e => { try { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = 'copy'; } catch {} };
@@ -680,10 +492,7 @@
         const msg = event.data;
         console.log('[DepViz] message:', msg?.type);
         if (msg.type === 'sampleData') {
-          state.data = msg.payload;
-          DepViz.data?.normalizeNodes?.();
-          schedule();
-          pushHistory('Load sample');
+          S.data = msg.payload; D.data?.normalizeNodes?.(); schedule(); pushHistory('Load sample');
         }
         if (msg.type === 'addArtifacts') {
           // Pre-position incoming modules so they don't stack and appear near drop
@@ -694,23 +503,14 @@
           schedule();
           pushHistory('Import artifacts');
         }
-        if (msg.type === 'autoArrange') { DepViz.arrange?.autoArrangeByFolders?.(); schedule(); }
+        if (msg.type === 'autoArrange') { DepViz.arrange?.autoArrangeLikeImport?.(); schedule(); }
         if (msg.type === 'clear') { state.data = { nodes: [], edges: [] }; schedule(); }
         if (msg.type === 'loadSnapshot') {
           const snap = msg.payload || {};
-          try {
-            if (snap.pan)   state.pan = snap.pan;
-            if (typeof snap.zoom === 'number') state.zoom = snap.zoom;
-            if (snap.typeVisibility) state.typeVisibility = snap.typeVisibility;
-            const data = snap.data || snap; // accept raw {nodes,edges} too
-            if (data && Array.isArray(data.nodes) && Array.isArray(data.edges)) {
-              state.data = { nodes: data.nodes, edges: data.edges };
-            }
-            DepViz.data?.normalizeNodes?.();
-            schedule();
-            state._hist = [snapshotNow()];
-            state._histIndex = 0;
-          } catch(e){ console.error('DepViz loadSnapshot error:', e); }
+          const data = snap.data || snap;
+          applySnapshot({ ...snap, data });
+          schedule();
+          D.stateApi && D.stateApi.pushHistory && D.stateApi.pushHistory(VS, 'Load snapshot');
           return;
         }
       } catch(e){ console.error('DepViz message error:', e); }
@@ -905,7 +705,7 @@
             if (hasLostMethods(n.id)) {
               items.splice(1, 0, { id:'reassemble_cls', label:'Reassemble children (methods)', run: ()=> reassembleClassById(n.id) });
             }
-            showCtx(e, { kind:'class', id: n.id }, items);
+            showCtx(e, items);
           });
           gClassesFree.appendChild(cg);
           gFuncsFree.appendChild(gmFree);
@@ -951,7 +751,10 @@
         wireEdgeHover(path);
         // disable click highlight on edges
         path.addEventListener('click', (ev)=>{ ev.stopPropagation(); /* no highlight */ });
-        path.addEventListener('contextmenu', (e)=>{ const items=[{id:'delete',label:'Remove from canvas',run:()=>doDelete({kind:'edge',el:path})}]; showCtx(e, { kind:'edge', el:path }, items); });
+        path.addEventListener('contextmenu', (e)=>{
+          const items=[{id:'delete',label:'Remove from canvas',run:()=>doDelete({kind:'edge',el:path})}];
+          showCtx(e, items);
+        });
       }
 
       applyTypeVisibility();
@@ -988,7 +791,7 @@
       if (!n.docked) {
         items.unshift({ id:'reattach_parent', label:'Re-attach to parent', run: ()=> reattachFuncById(n.id) });
       }
-      showCtx(e, { kind:'func', id: n.id }, items);
+      showCtx(e, items);
     });
     // double-click disabled
     return g;
@@ -1063,7 +866,7 @@
       if (hasLostMethods(c.id)) {
         items.splice(1, 0, { id:'reassemble_cls', label:'Reassemble children (methods)', run: ()=> reassembleClassById(c.id) });
       }
-      showCtx(e, { kind: 'class', id: c.id }, items);
+      showCtx(e, items);
     });
     return { g, gm };
   }
@@ -1514,9 +1317,11 @@
     Object.assign(globalThis.DepViz, {
       state,
       schedule,
+      centerOnNode,
+      applyTypeVisibility,
       svg: { updateTransform, clientToWorld, groups: { root, gEdgesBack, gEdgesFront, gModules, gClassesDocked, gFuncsDocked, gClassesFree, gFuncsFree, svg, gDocked: gClassesDocked, gFreeFuncs: gFuncsFree } },
-      ui: { applyTypeVisibility, showCtx },
-      util: { textMeasurer, createSvg, createText, resolveCollisions },
+      ui: { applyTypeVisibility, showCtx: (e, items)=> D.ui && D.ui.showCtx && D.ui.showCtx(e, items) },
+      util: { textMeasurer, createSvg, createText, resolveCollisions, exportPng, exportSvg, exportJson, exportSnapshotDv },
       consts: { MOD_PAD, MOD_HEAD, SLOT_H, GAP, FUNC_H, FUNC_W_DEFAULT, DETACH_PAD }
     });
   } catch {}

@@ -61,6 +61,27 @@
     }
   }
 
-  D.arrange = Object.freeze({ autoArrangeByFolders, autoArrangeBalanced });
+  // Same fan-out as import drop (triangular sequence, 320x220 footprint)
+  function autoArrangeLikeImport(origin){
+    const mods = S.data.nodes.filter(n=>n.kind==='module');
+    if (!mods.length) return;
+    const spacingX = 320, spacingY = 220;
+    const start = origin || S.spawnOrigin || S.lastCursorWorld || { x: 40, y: 40 };
+    let seq = 0;
+    const nextPos = (o, dx, dy) => {
+      const k = seq++;
+      const row = Math.floor((-1 + Math.sqrt(1 + 8*k)) / 2);
+      const used = row * (row + 1) / 2;
+      const col = k - used;
+      return { x: o.x + (row - col) * dx, y: o.y + col * dy };
+    };
+    const sorted = mods.slice().sort((a,b)=>String(a.label||'').localeCompare(String(b.label||'')));
+    for (const m of sorted){
+      const p = nextPos(start, spacingX, spacingY);
+      m.x = p.x; m.y = p.y;
+    }
+  }
+
+  D.arrange = Object.freeze({ autoArrangeByFolders, autoArrangeBalanced, autoArrangeLikeImport });
 })();
 
