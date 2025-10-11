@@ -64,12 +64,19 @@ export class DepvizDvProvider implements vscode.CustomEditorProvider<DvDocument>
     panel.webview.html = getCustomEditorHtml(panel, assets);
 
     try {
-      const snap = JSON.parse(document.getText());
-      panel.webview.postMessage({ type: 'loadSnapshot', payload: snap });
-    } catch (err: any) {
-      if (err?.message) {
-        vscode.window.showErrorMessage(`DepViz: invalid .dv (${err.message})`);
+      const raw = JSON.parse(document.getText());
+      const isSnapshot = raw?.data && Array.isArray(raw.data.nodes) && Array.isArray(raw.data.edges);
+      const isArtifacts = Array.isArray(raw?.nodes) && Array.isArray(raw?.edges);
+
+      if (isSnapshot) {
+        panel.webview.postMessage({ type: 'loadSnapshot', payload: raw });
+      } else if (isArtifacts) {
+        panel.webview.postMessage({ type: 'addArtifacts', payload: raw });
+      } else {
+        throw new Error('Unrecognized DepViz .dv format (expected snapshot or artifacts)');
       }
+    } catch (err: any) {
+      vscode.window.showErrorMessage(`DepViz: invalid .dv (${err?.message})`);
     }
 
     const opts: WebviewControllerOptions = {

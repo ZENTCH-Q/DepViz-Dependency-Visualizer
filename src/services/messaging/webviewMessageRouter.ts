@@ -169,11 +169,22 @@ async function handleRequestImportSnapshot(panel: vscode.WebviewPanel) {
     filters: { 'DepViz Graph': ['dv', 'json'] }
   });
   if (!picked?.length) return;
+
   try {
     const content = await vscode.workspace.fs.readFile(picked[0]);
     const text = dec(content);
-    panel.webview.postMessage({ type: 'loadSnapshot', payload: JSON.parse(text) });
-    vscode.window.showInformationMessage(`DepViz: Loaded snapshot ${picked[0].fsPath}`);
+    const parsed = JSON.parse(text);
+
+    // If it's a full snapshot, load it; if it's raw artifacts, add them.
+    if (parsed && parsed.data && Array.isArray(parsed.data.nodes) && Array.isArray(parsed.data.edges)) {
+      panel.webview.postMessage({ type: 'loadSnapshot', payload: parsed });
+    } else if (parsed && Array.isArray(parsed.nodes) && Array.isArray(parsed.edges)) {
+      panel.webview.postMessage({ type: 'addArtifacts', payload: parsed });
+    } else {
+      throw new Error('Unrecognized DepViz file format');
+    }
+
+    vscode.window.showInformationMessage(`DepViz: Loaded ${picked[0].fsPath}`);
   } catch (err: any) {
     vscode.window.showErrorMessage(`DepViz: Failed to load snapshot: ${err?.message ?? err}`);
   }
