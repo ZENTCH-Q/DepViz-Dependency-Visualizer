@@ -3,7 +3,7 @@
   const D = globalThis.DepViz || (globalThis.DepViz = {});
   const S = D.state;
 
-  let _ctx, _ctxSub, _searchPopup, _searchInput;
+  let _ctx, _ctxSub;
 
   function initUI(svg, wrapper, vscode){
     // context menus
@@ -11,14 +11,6 @@
     _ctxSub = el('div','context-menu context-sub'); document.body.appendChild(_ctxSub);
     window.addEventListener('click', ()=>{ _ctx.style.display='none'; _ctxSub.style.display='none'; });
 
-    // search popup
-    _searchPopup = el('div','', { id:'searchPopup' });
-    _searchPopup.style.display = 'none';
-    _searchInput = document.createElement('input');
-    _searchInput.placeholder = 'Search functions/classes...';
-    _searchInput.addEventListener('keydown', (e)=>{ if (e.key==='Enter') focusFunctionByName(_searchInput.value, vscode); });
-    _searchPopup.appendChild(_searchInput);
-    document.body.appendChild(_searchPopup);
   }
 
   function showCtx(e, items){
@@ -43,17 +35,17 @@
       { label: 'Export → PNG', run: ()=> { try { D.util?.exportPng && D.util.exportPng(); } catch {} } },
       { label: 'Import Artifacts (.json)', run: ()=> vscode && vscode.postMessage({ type:'requestImportJson' }) },
       { label: 'Load Snapshot (.dv)', run: ()=> vscode && vscode.postMessage({ type:'requestImportSnapshot' }) },
-      { label: 'Search function...', run: ()=> showSearchBar() }
+      { label: 'Search…', run: ()=> showSearchBar() }
     ];
     showCtx(e, items);
   }
 
   function showSearchBar(){
-    _searchPopup.style.display = 'flex';
-    _searchInput.focus();
+    try { window.dispatchEvent(new CustomEvent('depviz:show-search')); } catch {}
+
   }
   function hideSearchBar(){
-    _searchPopup.style.display = 'none';
+    try { window.dispatchEvent(new CustomEvent('depviz:hide-search')); } catch {}
   }
 
   function focusFunctionByName(q, vscode){

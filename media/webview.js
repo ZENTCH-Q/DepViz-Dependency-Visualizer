@@ -1342,6 +1342,8 @@
     const origShowCtx = existingUI.showCtx;
     globalThis.DepViz.ui = Object.assign({}, existingUI, {
       applyTypeVisibility,
+      showSearchBar,
+      hideSearchBar,
       showCtx: function(e, items){
         try {
           if (Array.isArray(items)) {
@@ -1369,6 +1371,8 @@
         return origShowCtx ? origShowCtx(e, items) : undefined;
       }
     });
+    window.addEventListener('depviz:show-search', ()=>{ try { showSearchBar(); } catch {} });
+    window.addEventListener('depviz:hide-search', ()=>{ try { hideSearchBar(); } catch {} });
   } catch {}
 })();
 

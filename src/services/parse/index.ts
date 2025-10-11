@@ -1,18 +1,14 @@
 // src/services/parse/index.ts
 import * as vscode from 'vscode';
-import { ParseResult, GraphArtifacts, Diagnostic, GraphNode, Edge, ModuleNode } from '../../shared/types';
+import { ParseResult, GraphArtifacts, Diagnostic, Edge, ModuleNode } from '../../shared/types';
 import { makeModuleId } from './utils';
-import { parseWithLsp } from './lspParser';
 
-/**
- * Top-level parser with tiered fallback:
- *  - Try LSP (symbols + optional call hierarchy)
- *  - On failure: still emit a module node + static import sniffing (no funcs/classes)
- */
 export async function parseFile(uri: vscode.Uri, text?: string, timeoutMs = 3000): Promise<ParseResult> {
   const src = text ?? (await vscode.workspace.openTextDocument(uri)).getText();
   // Race LSP parse with a timeout
   try {
+    // Lazy import to avoid circulars
+    const { parseWithLsp } = await import('./lspParser');
     const lspP = parseWithLsp(uri, src);
     const res = await timeout(lspP, timeoutMs);
     // Always ensure we have at least a module node (should already be present)

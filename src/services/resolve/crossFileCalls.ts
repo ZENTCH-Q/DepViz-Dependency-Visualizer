@@ -1,18 +1,8 @@
 // src/services/resolve/crossFileCalls.ts
 import * as vscode from 'vscode';
-import { GraphArtifacts, GraphNode, Edge, FuncNode } from '../../shared/types';
+import { Edge, FuncNode } from '../../shared/types';
 import { ParseService } from '../parse/parseService';
 
-/**
- * After a file has been parsed and sent to the webview, try to add
- * cross-file call edges using VS Code's Call Hierarchy.
- *
- * We only create edges when:
- *  - We can prepare the call hierarchy at a function position in the source file
- *  - The outgoing call target resolves to a function we already parsed in another file
- *
- * Edges are posted as an additional 'addArtifacts' with only edges[].
- */
 export async function resolveCrossFileCallsForFile(
   uri: vscode.Uri,
   parseService: ParseService,

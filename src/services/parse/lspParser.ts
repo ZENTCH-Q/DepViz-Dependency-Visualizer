@@ -5,7 +5,9 @@ import { snippetFrom } from '../../shared/text';
 import {
   stripStringsAndComments,
   normalizeContinuations,
-  resolveImportLabelByText,
+  resolveImportLabelByText
+} from '../../shared/parseUtils';
+import {
   normalizePosixPath,
   makeModuleId,
   makeClassId,
@@ -196,12 +198,6 @@ export async function parseWithLsp(uri: vscode.Uri, text: string): Promise<Parse
         }
       }
     }
-
-    diagnostics.push({
-      file: uri.fsPath,
-      severity: 'info',
-      message: 'Call Hierarchy not available; call edges were inferred heuristically.'
-    });
   }
 
   // --- Import edges (Python + TS/JS) ---
@@ -229,7 +225,7 @@ export async function parseWithLsp(uri: vscode.Uri, text: string): Promise<Parse
   // annotate module node with parser truth + whether calls were heuristic
   const modNode = nodes.find(n => n.id === moduleId);
   if (modNode) {
-    (modNode as any).lspStatus = status;               // 'ok' | 'partial'
+    (modNode as any).lspStatus = status;                 // 'ok' | 'partial'
     (modNode as any).heuristicCalls = !usedCallHierarchy; // boolean
   }
   return { nodes, edges, status, diagnostics };

@@ -1,3 +1,5 @@
+// src/shared/messages.ts
+
 // ── Outbound (extension → webview) ────────────────────────────────────────────
 export type WebviewOutbound =
   | { type: 'requestSample' }                    // ask the webview to emit its sample (panel only)
@@ -20,7 +22,36 @@ export type WebviewInbound =
   | { type: 'peekRefs'; target: { file: string; name: string }; view?: 'active' | 'beside' }
   | { type: 'clearCanvas' }
   | { type: 'edit'; payload: any; label?: string }
-  | { type: 'impactSummary'; payload: { dir: 'in' | 'out'; files: string[]; counts: Record<string, number> } };
+  | { type: 'impactSummary'; payload: { dir: 'in' | 'out'; files: string[]; counts: Record<string, number> } }
+  // extra message kinds used by the router/UI
+  | { type: 'requestImportJson' }
+  | { type: 'requestImportSnapshot' }
+  | { type: 'copyImportLog' };
+
+// Narrowing helper for runtime checks in routers/handlers.
+const INBOUND_TYPES = [
+  'requestSample',
+  'droppedUris',
+  'exportData',
+  'saveSnapshot',
+  'evictFingerprint',
+  'openFile',
+  'openAt',
+  'gotoDef',
+  'peekRefs',
+  'clearCanvas',
+  'edit',
+  'impactSummary',
+  'requestImportJson',
+  'requestImportSnapshot',
+  'copyImportLog'
+] as const;
+
+export function isInboundMessage(msg: unknown): msg is WebviewInbound {
+  return !!msg
+    && typeof (msg as any).type === 'string'
+    && (INBOUND_TYPES as readonly string[]).includes((msg as any).type);
+}
 
 // Exhaustiveness helper for switch statements
 export function assertNever(x: never): never {
