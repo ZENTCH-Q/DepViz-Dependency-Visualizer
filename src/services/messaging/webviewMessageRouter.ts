@@ -38,6 +38,16 @@ export function registerWebviewMessageHandlers(
           if (deps.document) {
             const text = JSON.stringify(message.payload ?? {}, null, 2);
             deps.document.applyEdit(text, message.label || 'Graph change');
+            // Optional autosave of the snapshot
+            if (vscode.workspace.getConfiguration('depviz').get<boolean>('autoSaveSnapshot')) {
+              const cts = new vscode.CancellationTokenSource();
+              try {
+                await deps.document.save(cts.token);
+                vscode.window.setStatusBarMessage('DepViz: Snapshot autosaved', 1200);
+              } finally {
+                cts.dispose();
+              }
+            }
           }
           break;
         case 'saveSnapshot':

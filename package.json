@@ -1,43 +1,28 @@
 {
   "name": "depviz",
   "displayName": "DepViz — Dependency Visualizer",
-  "description": "Visualize function calls, call stacks, and architecture diagrams in VS Code. Python/TS/JS.",
+  "description": "Visualize function calls, call stacks, and architecture diagrams in VS Code. Python/TS/JS (and more via LSP).",
   "version": "0.1.6",
   "publisher": "Zentch",
   "engines": {
-    "vscode": "^1.80.0"
+    "vscode": "^1.85.0"
   },
-  "categories": [
-    "Visualization"
-  ],
+  "categories": ["Visualization"],
   "icon": "media/depviz-icon.png",
-  "galleryBanner": {
-    "color": "#0e1116",
-    "theme": "dark"
-  },
+  "galleryBanner": { "color": "#0e1116", "theme": "dark" },
   "keywords": [
-    "function call",
-    "call stack",
-    "dependency",
-    "call graph",
-    "import graph",
-    "visualization",
-    "architecture",
-    "code map",
-    "python",
-    "typescript",
-    "javascript",
-    "code diagram",
-    "canvas"
+    "function call","call stack","dependency","call graph","import graph",
+    "visualization","architecture","code map","python","typescript","javascript",
+    "code diagram","canvas","lsp"
   ],
   "activationEvents": [
     "onCommand:depviz.open",
     "onCommand:depviz.import",
+    "onCommand:depviz.importActive",
+    "onCommand:depviz.diagnoseLsp",
     "onCustomEditor:depviz.graph"
   ],
-  "extensionKind": [
-    "workspace"
-  ],
+  "extensionKind": ["workspace"],
   "main": "./out/extension.js",
   "contributes": {
     "customEditors": [
@@ -45,19 +30,20 @@
         "viewType": "depviz.graph",
         "displayName": "DepViz Graph",
         "priority": "default",
-        "selector": [
-          {
-            "filenamePattern": "*.dv"
-          }
-        ]
+        "selector": [{ "filenamePattern": "*.dv" }]
       }
     ],
     "configuration": {
       "title": "DepViz",
       "properties": {
+        "depviz.autoSaveSnapshot": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically save the .dv snapshot whenever the graph changes."
+        },
         "depviz.maxFiles": {
           "type": "number",
-          "default": 2000,
+          "default": 500,
           "minimum": 1,
           "description": "Maximum number of files to import per operation."
         },
@@ -69,24 +55,14 @@
         },
         "depviz.includeGlobs": {
           "type": "array",
-          "default": [
-            "**/*"
-          ],
-          "items": {
-            "type": "string"
-          },
+          "default": ["**/*"],
+          "items": { "type": "string" },
           "description": "Glob patterns to include when importing from folders."
         },
         "depviz.excludeGlobs": {
           "type": "array",
-          "default": [
-            "**/.git/**",
-            "**/node_modules/**",
-            "**/__pycache__/**"
-          ],
-          "items": {
-            "type": "string"
-          },
+          "default": ["**/.git/**", "**/node_modules/**", "**/__pycache__/**"],
+          "items": { "type": "string" },
           "description": "Glob patterns to exclude when importing from folders."
         }
       }
@@ -95,79 +71,52 @@
       {
         "command": "depviz.open",
         "title": "DepViz: Open",
-        "icon": {
-          "light": "./media/depviz-light.svg",
-          "dark": "./media/depviz-dark.svg"
-        }
+        "icon": { "light": "./media/depviz-light.svg", "dark": "./media/depviz-dark.svg" }
       },
       {
         "command": "depviz.import",
         "title": "DepViz: Import into Canvas",
-        "icon": {
-          "light": "./media/depviz-light.svg",
-          "dark": "./media/depviz-dark.svg"
-        }
+        "icon": { "light": "./media/depviz-light.svg", "dark": "./media/depviz-dark.svg" }
+      },
+      {
+        "command": "depviz.importActive",
+        "title": "DepViz: Import Active File",
+        "icon": { "light": "./media/depviz-light.svg", "dark": "./media/depviz-dark.svg" }
+      },
+      {
+        "command": "depviz.diagnoseLsp",
+        "title": "DepViz: Diagnose LSP",
+        "icon": { "light": "./media/depviz-light.svg", "dark": "./media/depviz-dark.svg" }
       }
     ],
     "keybindings": [
-      {
-        "command": "depviz.open",
-        "key": "ctrl+alt+d",
-        "mac": "cmd+alt+d",
-        "when": "editorTextFocus"
-      }
+      { "command": "depviz.open", "key": "ctrl+alt+d", "mac": "cmd+alt+d", "when": "editorTextFocus" }
     ],
     "menus": {
-      "explorer/context": [
-        {
-          "command": "depviz.import",
-          "group": "navigation@100"
-        }
-      ],
-      "editor/title": [
-        {
-          "command": "depviz.open",
-          "group": "navigation@100"
-        }
-      ]
+      "explorer/context": [{ "command": "depviz.import", "group": "navigation@100" }],
+      "editor/title": [{ "command": "depviz.open", "group": "navigation@100" }]
     }
   },
   "capabilities": {
-    "untrustedWorkspaces": {
-      "supported": false
-    },
+    "untrustedWorkspaces": { "supported": false },
     "virtualWorkspaces": false
   },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/ZENTCH-Q/DepViz-Dependency-Visualizer"
-  },
+  "repository": { "type": "git", "url": "https://github.com/ZENTCH-Q/DepViz-Dependency-Visualizer" },
   "homepage": "https://github.com/ZENTCH-Q/DepViz-Dependency-Visualizer",
-  "bugs": {
-    "url": "https://github.com/ZENTCH-Q/DepViz-Dependency-Visualizer/issues"
-  },
+  "bugs": { "url": "https://github.com/ZENTCH-Q/DepViz-Dependency-Visualizer/issues" },
   "scripts": {
     "build": "esbuild src/extension.ts --bundle --minify --platform=node --target=node18 --external:vscode --outfile=out/extension.js",
     "vscode:prepublish": "npm run build",
     "watch": "esbuild src/extension.ts --bundle --platform=node --target=node18 --outfile=out/extension.js --watch"
   },
-  "files": [
-    "out/**",
-    "media/**",
-    "README.md",
-    "package.json",
-    "LICENSE"
-  ],
+  "files": ["out/**","media/**","README.md","package.json","LICENSE"],
   "license": "MIT",
   "devDependencies": {
-    "@types/node": "^24.7.0",
-    "@types/vscode": "^1.80.0",
+    "@types/node": "^20.11.30",
+    "@types/vscode": "^1.85.0",
     "esbuild": "^0.24.0",
     "toml": "^3.0.0",
-    "typescript": "^5.0.0"
+    "typescript": "^5.4.0"
   },
-  "dependencies": {
-    "build": "^0.1.4",
-    "run": "^1.5.0"
-  }
+  "dependencies": {}
 }

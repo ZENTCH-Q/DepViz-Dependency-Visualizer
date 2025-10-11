@@ -1,106 +1,69 @@
 // src/services/parse/utils.ts
-import type * as vscode from 'vscode';
-import { escapeReg } from '../../shared/text';
-import { hash } from '../../shared/encoding';
+import * as path from 'path';
 
-export function normalizeContinuations(src: string): string {
-  let s = src.replace(/\\\r?\n/g, ' ');
-  s = s.replace(/from\s+[\w\.]+\s+import\s*\(([\s\S]*?)\)/g, (match) => match.replace(/\r?\n/g, ' '));
-  return s;
+export function normalizePosixPath(p: string): string {
+  return p.replace(/\\/g, '/');
 }
 
-export function stripStringsAndComments(src: string): string {
-  let s = src;
-  s = s.replace(/\/\*[\s\S]*?\*\//g, '');
-  s = s.replace(/(^|[^:])\/\/.*$/gm, '$1');
-  s = s.replace(/^[ \t]*#.*$/gm, '');
-  s = s.replace(/("""|''')[\s\S]*?\1/g, '');
-  s = s.replace(/'(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*"/g, '');
-  s = s.replace(/`(?:\\.|[^\\`$]|(\$\{[\s\S]*?\}))*`/g, (match) => {
-    const parts: string[] = [];
-    const re = /\$\{([\s\S]*?)\}/g;
-    let k: RegExpExecArray | null;
-    while ((k = re.exec(match))) {
-      parts.push(k[1]);
-    }
-    return parts.join(' ');
-  });
-  return s;
+export function makeModuleId(label: string): string {
+  return `mod:${normalizePosixPath(label)}`;
 }
 
-export function normalizePosixPath(input: string): string {
-  const parts = input.replace(/\\/g, '/').split('/');
-  const out: string[] = [];
-  for (const part of parts) {
-    if (!part || part === '.') {
-      continue;
-    }
-    if (part === '..') {
-      out.pop();
-      continue;
-    }
-    out.push(part);
-  }
-  return out.join('/');
-}
-
-export function resolveImportLabelByText(fromLabel: string, spec: string, lang: 'ts' | 'py'): string | null {
-  try {
-    const posixFrom = fromLabel.replace(/\\/g, '/');
-    const baseDir = posixFrom.includes('/') ? posixFrom.slice(0, posixFrom.lastIndexOf('/')) : '';
-    const rel = (p: string) => normalizePosixPath((baseDir ? `${baseDir}/` : '') + p);
-
-    if (lang === 'ts') {
-      if (spec.startsWith('.')) {
-        const core = rel(spec);
-        if (/\.(ts|tsx|js|jsx)$/i.test(core)) {
-          return core;
-        }
-        const candidates = [
-          `${core}.ts`, `${core}.tsx`, `${core}.js`, `${core}.jsx`,
-          `${core}/index.ts`, `${core}/index.tsx`, `${core}/index.js`, `${core}/index.jsx`
-        ];
-        return candidates[0];
-      }
-      if (spec.startsWith('/')) {
-        const sansLeading = spec.replace(/^\/+/, '');
-        const core = normalizePosixPath(sansLeading);
-        return /\.(ts|tsx|js|jsx)$/i.test(core) ? core : `${core}.ts`;
-      }
-      return null;
-    }
-
-    if (spec.startsWith('.')) {
-      const up = spec.match(/^\.+/);
-      const dots = up ? up[0].length : 0;
-      const rest = spec.slice(dots).replace(/^\./, '');
-      const pops = Math.max(0, dots - 1);
-      let parts = baseDir ? baseDir.split('/') : [];
-      parts = parts.slice(0, Math.max(0, parts.length - pops));
-      const core = normalizePosixPath(parts.join('/') + (rest ? `/${rest.replace(/\./g, '/')}` : ''));
-      const candidates = [`${core}.py`, `${core}/__init__.py`];
-      return candidates[0];
-    }
-
-    const core = normalizePosixPath(spec.replace(/\./g, '/'));
-    const candidates = [`${core}.py`, `${core}/__init__.py`];
-    return candidates[0];
-  } catch {
-    return null;
-  }
+export function makeClassId(fileLabel: string, className: string): string {
+  return `cls:${normalizePosixPath(fileLabel)}#${className}`;
 }
 
 export function makeFuncId(fileLabel: string, name: string, line: number): string {
-  return `fn_${hash(`${fileLabel}:${name}:${line}`)}`;
+  return `fn:${normalizePosixPath(fileLabel)}#${name}@${line}`;
 }
 
-export function makeClassId(fileLabel: string, name: string): string {
-  return `cls_${hash(`${fileLabel}:${name}`)}`;
+/**
+ * Strip (best-effort) strings and comments from mixed-language source.
+ * Keeps newlines so line numbers remain roughly stable.
+ */
+export function stripStringsAndComments(src: string): string {
+  // Remove block comments /* ... */ and /** ... */ and <!-- ... -->
+  let s = src
+    // JS/C/Java block
+    .replace(/\/\*[\s\S]*?\*\//g, (m) => '\n'.repeat(m.split('\n').length - 1))
+    // HTML/XML
+    .replace(/<!--[\s\S]*?-->/g, (m) => '\n'.repeat(m.split('\n').length - 1));
+
+  // Remove single-line comments: //, #, -- (SQL/Lua-ish), ; in lisp-ish (skip if ; inside string)
+  s = s.replace(
+    /(^|[ \t])(?:\/\/|#|--|;)(.*)$|("[^"\\]*(?:\\.[^"\\]*)*")|('[^'\\]*(?:\\.[^'\\]*)*')|(`[^`\\]*(?:\\.[^`\\]*)*`)/gm,
+    (_, lead, cm, dqs, sqs, tqs) => {
+      if (dqs || sqs || tqs) return (dqs || sqs || tqs); // keep strings
+      return lead ? lead : '';
+    }
+  );
+
+  // Finally, wipe strings themselves (preserve line count)
+  s = s.replace(/"[^"\\]*(?:\\.[^"\\]*)*"/g, (m) => '""')
+       .replace(/'[^'\\]*(?:\\.[^'\\]*)*'/g, (m) => "''")
+       .replace(/`[^`\\]*(?:\\.[^`\\]*)*`/g, (m) => '``');
+
+  return s;
 }
 
-export function makeModuleId(labelKey: string): string {
-  return `mod_${hash(labelKey)}`;
+/**
+ * Join line continuations (e.g. Python "\" or JS backslash) into single logical lines.
+ */
+export function normalizeContinuations(src: string): string {
+  return src.replace(/\\\r?\n/g, ' ');
 }
 
-export type SymbolFetcher = typeof import('vscode')['commands']['executeCommand'];
+/**
+ * Resolve an import-ish string (relative or bare) to a displayable label:
+ * - For relative paths, normalize to workspace-style posix paths
+ * - For bare module names, return as-is
+ */
+export function resolveImportLabelByText(fromFile: string, spec: string): string | null {
+  const isRelative = spec.startsWith('.') || spec.startsWith('/') || spec.startsWith('..');
+  if (!isRelative) return spec;
 
+  const fromDir = normalizePosixPath(path.dirname(normalizePosixPath(fromFile)));
+  const joined = normalizePosixPath(path.normalize(path.join(fromDir, spec)));
+  // strip common JS/TS/Python extensions
+  return joined.replace(/\.(tsx?|mjs|cjs|jsx?|py|go|rs|rb|php|java|kt|cs)$/i, '');
+}

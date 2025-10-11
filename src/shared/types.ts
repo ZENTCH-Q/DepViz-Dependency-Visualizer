@@ -1,33 +1,31 @@
 // src/shared/types.ts
-export type EdgeType = 'import' | 'call';
+export type GraphNodeKind = 'module' | 'class' | 'func';
 
-export type NodeKind = 'module' | 'class' | 'func';
-
-export interface GraphNode {
+export type GraphNode = {
   id: string;
-  kind: NodeKind;
+  kind: GraphNodeKind;
   label: string;
-  fsPath: string;
   parent?: string;
-  docked?: boolean;
+  fsPath?: string;
   source?: string;
+  docked?: boolean;
   snippet?: string;
   range?: { line: number; col: number };
-}
+};
 
-export interface GraphEdge {
+export type GraphEdge = {
   from: string;
   to: string;
-  type: EdgeType;
-}
+  type: 'call' | 'import';
+};
 
-export interface GraphArtifacts {
+export type GraphArtifacts = {
   nodes: GraphNode[];
   edges: GraphEdge[];
-}
+};
 
+// Added for status bar totals
 export interface Totals {
   modules: number;
   funcs: number;
 }
-

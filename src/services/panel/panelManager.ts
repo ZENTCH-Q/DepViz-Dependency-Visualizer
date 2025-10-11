@@ -125,6 +125,15 @@ export class PanelManager {
 
   private updateStatusBar() {
     this.statusBar.text = `DepViz: $(graph) ${this.totals.modules} mod | ${this.totals.funcs} fn`;
-    this.statusBar.tooltip = 'Click to reopen DepViz';
+    const md = new vscode.MarkdownString([
+      '**DepViz**',
+      '',
+      `• Modules: ${this.totals.modules}`,
+      `• Functions: ${this.totals.funcs}`,
+      '',
+      '_Click to open canvas. Use **DepViz: Import Active File** to add the current editor._'
+    ].join('\n'));
+    md.isTrusted = true;
+    this.statusBar.tooltip = md;
   }
 }
