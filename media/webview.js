@@ -42,11 +42,6 @@
 
   // Scene graph
   const root = createSvg('g', {id: 'root'});
-  const defs = createSvg('defs', {});
-  const arrow = createSvg('marker', { id: 'arrow', viewBox:'0 0 10 10', refX:'8', refY:'5', markerWidth:'6', markerHeight:'6', orient:'auto-start-reverse' });
-  arrow.appendChild(createSvg('path', { d:'M 0 0 L 10 5 L 0 10 z', fill:'currentColor' }));
-  defs.appendChild(arrow);
-  root.appendChild(defs);
 
   const gEdgesBack      = createSvg('g', {id:'edges-back'});
   const gModules        = createSvg('g', {id:'modules'});            // expanded modules live here
@@ -1333,6 +1328,8 @@
     Object.assign(globalThis.DepViz, {
       state,
       schedule,
+      showSearchBar,
+      hideSearchBar,
       centerOnNode,
       applyTypeVisibility,
       svg: { updateTransform, clientToWorld, groups: { root, gEdgesBack, gEdgesFront, gModules, gClassesDocked, gFuncsDocked, gClassesFree, gFuncsFree, svg, gDocked: gClassesDocked, gFreeFuncs: gFuncsFree } },
@@ -1342,6 +1339,7 @@
     const origShowCtx = existingUI.showCtx;
     globalThis.DepViz.ui = Object.assign({}, existingUI, {
       applyTypeVisibility,
+      showSearchBar: () => showSearchBar(),
       showSearchBar,
       hideSearchBar,
       showCtx: function(e, items){

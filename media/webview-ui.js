@@ -35,33 +35,9 @@
       { label: 'Export → PNG', run: ()=> { try { D.util?.exportPng && D.util.exportPng(); } catch {} } },
       { label: 'Import Artifacts (.json)', run: ()=> vscode && vscode.postMessage({ type:'requestImportJson' }) },
       { label: 'Load Snapshot (.dv)', run: ()=> vscode && vscode.postMessage({ type:'requestImportSnapshot' }) },
-      { label: 'Search…', run: ()=> showSearchBar() }
+      { label: 'Search…', run: ()=> D.showSearchBar?.() || D.ui?.showSearchBar?.() }
     ];
     showCtx(e, items);
-  }
-
-  function showSearchBar(){
-    try { window.dispatchEvent(new CustomEvent('depviz:show-search')); } catch {}
-
-  }
-  function hideSearchBar(){
-    try { window.dispatchEvent(new CustomEvent('depviz:hide-search')); } catch {}
-  }
-
-  function focusFunctionByName(q, vscode){
-    const NM = D.indices?.nodeMap || new Map();
-    const hay = (q||'').trim().toLowerCase();
-    if (!hay) return;
-    for (const [id,n] of NM){
-      if ((n.label||'').toLowerCase().includes(hay)){
-        try { D.centerOnNode && D.centerOnNode(n); } catch {}
-        S.focusId = n.id; S.focusModuleId = null;
-        D.applyTypeVisibility && D.applyTypeVisibility();
-        D.schedule && D.schedule();
-        hideSearchBar();
-        return;
-      }
-    }
   }
 
   function el(tag, cls, attrs){
@@ -71,5 +47,5 @@
     return x;
   }
 
-  D.ui = Object.freeze({ initUI, showCtx, showCanvasMenu, showSearchBar, hideSearchBar, focusFunctionByName });
+  D.ui = Object.freeze({ initUI, showCtx, showCanvasMenu });
 })();
