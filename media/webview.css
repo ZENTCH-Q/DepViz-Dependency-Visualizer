@@ -175,8 +175,10 @@ g.module-group.selected rect.module { stroke: var(--hi-white); stroke-width: 2.6
 .func-group:hover rect.func { filter: drop-shadow(0 8px 24px var(--shadow)); }
 .module-title { font-size: 12px; fill: var(--fg); font-weight: 600; }
 .module-badge { font-size: 10px; fill: var(--muted); }
-.module-toggle { cursor: pointer; fill: var(--muted); transition: fill var(--theme-dur) ease-in-out; }
-.module-toggle:hover { fill: var(--fg); }
+.status-dot {
+  stroke: var(--bg);
+  stroke-width: 2;
+}
 
 /* Classes (nested containers) */
 .class {

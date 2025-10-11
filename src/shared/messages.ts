@@ -2,8 +2,6 @@
 
 // ── Outbound (extension → webview) ────────────────────────────────────────────
 export type WebviewOutbound =
-  | { type: 'requestSample' }                    // ask the webview to emit its sample (panel only)
-  | { type: 'sampleData'; payload: any }         // deliver sample data
   | { type: 'addArtifacts'; payload: any }       // append import graph artifacts
   | { type: 'autoArrange' }                      // trigger layout
   | { type: 'clear' }                            // clear canvas
@@ -11,7 +9,6 @@ export type WebviewOutbound =
 
 // ── Inbound (webview → extension) ─────────────────────────────────────────────
 export type WebviewInbound =
-  | { type: 'requestSample' }
   | { type: 'droppedUris'; items: string[] }
   | { type: 'exportData'; kind: 'png' | 'svg' | 'json' | 'dv'; base64: string; suggestedName?: string }
   | { type: 'saveSnapshot'; payload: any }
@@ -30,7 +27,6 @@ export type WebviewInbound =
 
 // Narrowing helper for runtime checks in routers/handlers.
 const INBOUND_TYPES = [
-  'requestSample',
   'droppedUris',
   'exportData',
   'saveSnapshot',

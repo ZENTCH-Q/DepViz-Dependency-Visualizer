@@ -7,6 +7,10 @@ export interface Edge {
   to: string;
   type: EdgeType;
   heuristic?: boolean;   // true when linked by heuristics (not proven by LSP)
+  /** Source of truth for this edge; UI can display confidence. */
+  provenance?: 'hierarchy' | 'refs' | 'ast' | 'lsp' | 'heuristic';
+  /** 0–1 confidence; defaults to 1 when provenance is 'hierarchy' or 'lsp'. */
+  confidence?: number;
 }
 
 export interface BaseNode {

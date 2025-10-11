@@ -17,7 +17,6 @@ interface HandlerDependencies {
   totals: Totals;
   updateStatusBar: () => void;
   gotoSymbol: GotoSymbolFn;
-  allowSamples?: boolean;        // unused (kept for API stability)
   allowImpactSummary?: boolean;
   document?: DvDocument;
 }

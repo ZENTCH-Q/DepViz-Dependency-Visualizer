@@ -557,33 +557,12 @@
         maybeAddSearchMarks(g, m, MOD_PAD, 6, m.label, true);
         g.appendChild(createText(MOD_PAD, 26, 'module-badge', 'module'));
         try {
-          const lspStatus = (m && m.lspStatus) ? m.lspStatus : 'ok'; // 'ok' | 'partial' | 'nolsp'
-          const heuristicCalls = !!(m && m.heuristicCalls);
-          // Show parser status exactly; add a tiny marker for heuristic calls if OK
-          const tag = lspStatus === 'nolsp' ? 'No LSP'
-                    : lspStatus === 'partial' ? 'Partial'
-                    : 'OK';
-          const pill = createText(MOD_PAD + 64, 26, 'module-badge', `[${tag}]`);
-          pill.setAttribute('text-anchor', 'start');
-          pill.setAttribute('fill',
-            tag === 'OK' ? '#86efac' :
-            tag === 'Partial' ? '#f59e0b' : '#ef4444'
-          );
-          g.appendChild(pill);
-          if (tag === 'OK' && heuristicCalls) {
-            const hint = createText(MOD_PAD + 112, 26, 'module-badge', '• heuristic calls');
-            hint.setAttribute('text-anchor', 'start');
-            hint.setAttribute('fill', '#9ca3af');
-            g.appendChild(hint);
-          }
+          const lsp = (m && m.lspStatus) ? m.lspStatus : 'ok'; // 'ok' | 'partial' | 'nolsp'
+          const color = lsp === 'ok' ? '#22c55e' : (lsp === 'partial' ? '#f59e0b' : '#ef4444');
+          const dot = createSvg('circle', { cx: MOD_W - 10, cy: 10, r: 5, class: 'status-dot' });
+          dot.setAttribute('fill', color);
+          g.appendChild(dot);
         } catch {}
-
-        // collapse toggle
-        const triX = MOD_W - 18, triY = 14;
-        const tri = createSvg('path', { d: m.collapsed ? `M ${triX} ${triY} l 10 0 l -5 8 z` : `M ${triX} ${triY} l 10 0 l 0 10 z`, class: 'module-toggle' });
-        try { globalThis.DepViz?.interact?.wireCollapseToggle ? globalThis.DepViz.interact.wireCollapseToggle(tri, m) : tri.addEventListener('click', (e)=>{ e.stopPropagation(); m.collapsed = !m.collapsed; schedule(); }); } catch {}
-        g.appendChild(tri);
-
         // Collapsed modules must render above edges; expanded modules below
         (m.collapsed ? gModulesAbove : gModules).appendChild(g);
         // docked layer for module-level functions; appended after layout
@@ -633,16 +612,14 @@
           }
           modHeightActual = yCursor + MOD_PAD;
         }
-        // update module box and rect height to actual layout
         state.moduleBoxes.set(m.id, { x: gx, y: gy, w: MOD_W, h: modHeightActual });
         try { rect.setAttribute('height', String(modHeightActual)); } catch {}
-        // append gm after class containers for proper z-order
         gFuncsDocked.appendChild(gm);
 
         try { globalThis.DepViz?.interact?.enableModuleDrag && globalThis.DepViz.interact.enableModuleDrag(g, rect, m, gm); } catch {}
-        // no highlight/focus on single click
+
         g.addEventListener('click', (e)=>{ e.stopPropagation(); /* no highlight */ });
-        // double-click: expand/collapse the module card
+
         g.addEventListener('dblclick', (e)=>{
           e.stopPropagation();
           m.collapsed = !m.collapsed;

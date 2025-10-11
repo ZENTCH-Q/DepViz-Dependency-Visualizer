@@ -79,7 +79,6 @@ export class DepvizDvProvider implements vscode.CustomEditorProvider<DvDocument>
       updateStatusBar: this.deps.updateStatusBar,
       gotoSymbol: this.deps.gotoSymbol,
       document,
-      allowSamples: false,
       allowImpactSummary: false
     };
     const controller = new WebviewController(panel, opts);

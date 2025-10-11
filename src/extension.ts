@@ -59,9 +59,14 @@ export function activate(context: vscode.ExtensionContext) {
     const lang = ed.document.languageId;
     const res = await vscode.commands.executeCommand<any>('vscode.executeDocumentSymbolProvider', uri);
     const count = Array.isArray(res) ? res.length : 0;
+    // try call hierarchy quickly
+    let chOk = 'Unknown';
+    try { await vscode.commands.executeCommand('vscode.prepareCallHierarchy', uri, new vscode.Position(0,0)); chOk = 'Yes'; }
+    catch { chOk = 'No'; }
     const details = [
       `Language: ${lang}`,
       `Symbols returned: ${count}`,
+      `Call Hierarchy: ${chOk}`,
       count === 0 ? 'No symbols. Is the language extension enabled?' : 'Looks good.'
     ].join(' • ');
     vscode.window.showInformationMessage(`DepViz: ${details}`, 'Open Extensions').then(p => {

@@ -98,7 +98,6 @@ export class PanelManager {
       totals: this.totals,
       updateStatusBar: () => this.updateStatusBar(),
       gotoSymbol: this.gotoSymbol,
-      allowSamples: false,
       allowImpactSummary: true
     };
     const controller = new WebviewController(panel, opts);

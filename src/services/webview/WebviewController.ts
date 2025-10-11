@@ -13,7 +13,6 @@ export interface WebviewControllerOptions {
   updateStatusBar: () => void;
   gotoSymbol: GotoSymbolFn;
   document?: DvDocument;
-  allowSamples: boolean;
   allowImpactSummary: boolean;
 }
 
@@ -38,7 +37,6 @@ export class WebviewController implements vscode.Disposable {
       updateStatusBar: this.opts.updateStatusBar,
       gotoSymbol: this.opts.gotoSymbol,
       document: this.opts.document,
-      allowSamples: this.opts.allowSamples,
       allowImpactSummary: this.opts.allowImpactSummary
     });
     // Clean up with panel

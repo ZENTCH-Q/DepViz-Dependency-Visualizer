@@ -55,10 +55,7 @@ export function getPanelHtml(panel: vscode.WebviewPanel, deps: HtmlDeps): string
 
 export function getCustomEditorHtml(panel: vscode.WebviewPanel, deps: Omit<HtmlDeps, 'dataUri'>): string {
   const html = getPanelHtml(panel, { ...deps, dataUri: '' });
-  return html.replace(
-    'window.DEPVIZ = { DATA_URI: "" };',
-    'window.DEPVIZ = { DATA_URI: "", NO_SAMPLE: true };'
-  );
+  return html;
 }
 
 function getNonce(): string {
