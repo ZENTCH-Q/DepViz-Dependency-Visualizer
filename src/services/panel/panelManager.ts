@@ -83,18 +83,12 @@ export class PanelManager {
 
     vscode.window.showInformationMessage(
       'DepViz opened. Import files to see something.',
-      'Import...',
-      'Load Sample'
-    ).then(async pick => {
-      if (pick === 'Import...') {
-        vscode.commands.executeCommand('depviz.import');
-      }
-      if (pick === 'Load Sample') {
-        panel.webview.postMessage({ type: 'requestSample' });
-      }
+      'Import...'
+    ).then(pick => {
+      if (pick === 'Import...') vscode.commands.executeCommand('depviz.import');
     });
 
-    const assets = getWebviewAssets(this.context, panel.webview, { includeSample: true });
+    const assets = getWebviewAssets(this.context, panel.webview);
 
     panel.webview.html = getPanelHtml(panel, assets);
 
@@ -104,7 +98,7 @@ export class PanelManager {
       totals: this.totals,
       updateStatusBar: () => this.updateStatusBar(),
       gotoSymbol: this.gotoSymbol,
-      allowSamples: true,
+      allowSamples: false,
       allowImpactSummary: true
     };
     const controller = new WebviewController(panel, opts);

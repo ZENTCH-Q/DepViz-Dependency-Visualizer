@@ -561,6 +561,27 @@
         // highlight search matches on module title
         maybeAddSearchMarks(g, m, MOD_PAD, 6, m.label, true);
         g.appendChild(createText(MOD_PAD, 26, 'module-badge', 'module'));
+        try {
+          const lspStatus = (m && m.lspStatus) ? m.lspStatus : 'ok'; // 'ok' | 'partial' | 'nolsp'
+          const heuristicCalls = !!(m && m.heuristicCalls);
+          // Show parser status exactly; add a tiny marker for heuristic calls if OK
+          const tag = lspStatus === 'nolsp' ? 'No LSP'
+                    : lspStatus === 'partial' ? 'Partial'
+                    : 'OK';
+          const pill = createText(MOD_PAD + 64, 26, 'module-badge', `[${tag}]`);
+          pill.setAttribute('text-anchor', 'start');
+          pill.setAttribute('fill',
+            tag === 'OK' ? '#86efac' :
+            tag === 'Partial' ? '#f59e0b' : '#ef4444'
+          );
+          g.appendChild(pill);
+          if (tag === 'OK' && heuristicCalls) {
+            const hint = createText(MOD_PAD + 112, 26, 'module-badge', '• heuristic calls');
+            hint.setAttribute('text-anchor', 'start');
+            hint.setAttribute('fill', '#9ca3af');
+            g.appendChild(hint);
+          }
+        } catch {}
 
         // collapse toggle
         const triX = MOD_W - 18, triY = 14;
@@ -782,18 +803,29 @@
 
   // --- Spawn placement -------------------------------------------------------
   function primeSpawnPositions(payload){
-    const nodes = (payload && Array.isArray(payload.nodes)) ? payload.nodes : [];
+    const nodes = Array.isArray(payload?.nodes) ? payload.nodes : [];
     if (!nodes.length) return;
+
     // Only act shortly after a drop; otherwise leave positions untouched
-    const now = performance.now ? performance.now() : Date.now();
-    const fresh = (now - (state.lastSpawnAtMs || 0)) < 4000; // 4s window per drop
-    const origin = state.spawnOrigin || state.lastCursorWorld || { x: 0, y: 0 };
-    const spacingX = 320, spacingY = 220; // rough module footprint
-    // place only modules with no explicit x/y
+    const now = (performance && performance.now) ? performance.now() : Date.now();
+    const fresh = (now - (state.lastSpawnAtMs || 0)) < 4000; // 4s window after a drop
+    if (!fresh) return;
+
+    const origin = state.spawnOrigin || state.lastCursorWorld || { x: 40, y: 40 };
+    let seq = 0;
+    const next = () => {
+      const k = seq++;
+      const row = Math.floor((-1 + Math.sqrt(1 + 8*k)) / 2);
+      const used = row * (row + 1) / 2;
+      const col = k - used;
+      return { x: origin.x + (row - col) * 320, y: origin.y + col * 220 };
+      // triangular fan-out around origin
+    };
+
     for (const n of nodes) {
-      if (n && n.kind === 'module' && (typeof n.x !== 'number' || typeof n.y !== 'number')) {
-        const pos = fresh ? nextSpawnPos(origin, spacingX, spacingY) : nextSpawnPos({ x: 40, y: 40 }, spacingX, spacingY);
-        n.x = pos.x; n.y = pos.y;
+      if (n.kind === 'module' && (typeof n.x !== 'number' || typeof n.y !== 'number')) {
+        const p = next();
+        n.x = p.x; n.y = p.y;
       }
     }
   }

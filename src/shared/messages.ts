@@ -14,6 +14,7 @@ export type WebviewInbound =
   | { type: 'exportData'; kind: 'png' | 'svg' | 'json' | 'dv'; base64: string; suggestedName?: string }
   | { type: 'saveSnapshot'; payload: any }
   | { type: 'evictFingerprint'; fsPath: string }
+  | { type: 'openFile'; fsPath: string; view?: 'active' | 'beside' }
   | { type: 'openAt'; fsPath: string; line: number; col: number; view?: 'active' | 'beside' }
   | { type: 'gotoDef'; target: { file: string; name: string }; view?: 'active' | 'beside' }
   | { type: 'peekRefs'; target: { file: string; name: string }; view?: 'active' | 'beside' }

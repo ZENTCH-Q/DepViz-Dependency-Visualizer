@@ -1,6 +1,6 @@
 // src/services/parse/lspParser.ts
 import * as vscode from 'vscode';
-import { GraphArtifacts } from '../../shared/types';
+import { ParseResult, Edge } from '../../shared/types';
 import { snippetFrom } from '../../shared/text';
 import {
   stripStringsAndComments,
@@ -49,7 +49,9 @@ function asDocumentSymbols(result: any): DS[] {
   });
 }
 
-export async function parseWithLsp(uri: vscode.Uri, text: string): Promise<GraphArtifacts | null> {
+type Fn = { id: string; name: string; start: number; end: number; col: number; parent: string };
+
+export async function parseWithLsp(uri: vscode.Uri, text: string): Promise<ParseResult> {
   const fileLabel = vscode.workspace.asRelativePath(uri, false);
   const moduleLabelKey = normalizePosixPath(fileLabel);
   const moduleId = makeModuleId(moduleLabelKey);
@@ -59,20 +61,30 @@ export async function parseWithLsp(uri: vscode.Uri, text: string): Promise<Graph
     kind: 'module',
     label: fileLabel,
     fsPath: uri.fsPath,
-    source: text
+    source: text,
+    collapsed: true
   }];
-  const edges: any[] = [];
+  const edges: Edge[] = [];
+  const diagnostics: ParseResult['diagnostics'] = [];
 
   // Ask the language server for symbols
   const raw = await vscode.commands.executeCommand<any>('vscode.executeDocumentSymbolProvider', uri);
   const symbols = asDocumentSymbols(raw);
 
+  if (!symbols.length) {
+    diagnostics.push({
+      file: uri.fsPath,
+      severity: 'warn',
+      message: 'Language Server returned no symbols for this file.'
+    });
+  }
+
   // Collect functions/methods (+ classes for docking)
-  type Fn = { id: string; name: string; start: number; end: number; col: number; parent: string };
   const functions: Fn[] = [];
   const classIds = new Map<string, string>();
 
   const document = await vscode.workspace.openTextDocument(uri);
+  const lines = text.split(/\r?\n/);
 
   const addFunction = (name: string, selection: vscode.Range, full: vscode.Range, parent: string) => {
     const id = makeFuncId(fileLabel, name, selection.start.line);
@@ -126,7 +138,7 @@ export async function parseWithLsp(uri: vscode.Uri, text: string): Promise<Graph
 
   for (const s of symbols) visit(s);
 
-  const lines = text.split(/\r?\n/);
+  // Emit function nodes
   for (const fn of functions) {
     nodes.push({
       id: fn.id,
@@ -140,43 +152,59 @@ export async function parseWithLsp(uri: vscode.Uri, text: string): Promise<Graph
     });
   }
 
-  // Build a very light call graph by body token scan (still LSP-only file list)
-  const bare = (name: string) => (name.includes('.') ? name.split('.').pop() || name : name);
-  const nameToIds = new Map<string, string[]>();
-  for (const fn of functions) {
-    const key = bare(fn.name);
-    if (!nameToIds.has(key)) nameToIds.set(key, []);
-    nameToIds.get(key)!.push(fn.id);
+  // --- Calls: prefer Call Hierarchy (precise), then fallback heuristic ---
+  let usedCallHierarchy = false;
+  try {
+    usedCallHierarchy = await tryCallHierarchy(uri, functions, edges);
+  } catch {
+    usedCallHierarchy = false;
   }
 
-  const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const regexCache = new Map<string, RegExp>();
-  const wcr = (token: string) => new RegExp(String.raw`\b${escapeRegExp(token)}\s*\(`);
-  const bodyOf = (fn: Fn) => {
-    try {
-      return document.getText(new vscode.Range(new vscode.Position(fn.start, 0), new vscode.Position(fn.end + 1, 0)));
-    } catch {
-      return lines.slice(fn.start, fn.end + 1).join('\n');
+  if (!usedCallHierarchy) {
+    // Heuristic body token scan (as before), but mark edges as heuristic
+    const bare = (name: string) => (name.includes('.') ? name.split('.').pop() || name : name);
+    const nameToIds = new Map<string, string[]>();
+    for (const fn of functions) {
+      const key = bare(fn.name);
+      if (!nameToIds.has(key)) nameToIds.set(key, []);
+      nameToIds.get(key)!.push(fn.id);
     }
-  };
 
-  for (const fn of functions) {
-    const body = stripStringsAndComments(bodyOf(fn));
-    for (const [calleeToken, ids] of nameToIds) {
-      if (ids.includes(fn.id)) continue;
-      const bareToken = bare(calleeToken);
-      let regex = regexCache.get(bareToken);
-      if (!regex) {
-        regex = wcr(bareToken);
-        regexCache.set(bareToken, regex);
+    const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regexCache = new Map<string, RegExp>();
+    const wcr = (token: string) => new RegExp(String.raw`\b${escapeRegExp(token)}\s*\(`);
+    const bodyOf = (fn: Fn) => {
+      try {
+        return document.getText(new vscode.Range(new vscode.Position(fn.start, 0), new vscode.Position(fn.end + 1, 0)));
+      } catch {
+        return lines.slice(fn.start, fn.end + 1).join('\n');
       }
-      if (regex.test(body) || (calleeToken !== bareToken && wcr(calleeToken).test(body))) {
-        edges.push({ from: fn.id, to: ids[0], type: 'call' });
+    };
+
+    for (const fn of functions) {
+      const body = stripStringsAndComments(bodyOf(fn));
+      for (const [calleeToken, ids] of nameToIds) {
+        if (ids.includes(fn.id)) continue;
+        const bareToken = bare(calleeToken);
+        let regex = regexCache.get(bareToken);
+        if (!regex) {
+          regex = wcr(bareToken);
+          regexCache.set(bareToken, regex);
+        }
+        if (regex.test(body) || (calleeToken !== bareToken && wcr(calleeToken).test(body))) {
+          edges.push({ from: fn.id, to: ids[0], type: 'call', heuristic: true });
+        }
       }
     }
+
+    diagnostics.push({
+      file: uri.fsPath,
+      severity: 'info',
+      message: 'Call Hierarchy not available; call edges were inferred heuristically.'
+    });
   }
 
-  // Import edges (Python + TS/JS)
+  // --- Import edges (Python + TS/JS) ---
   const importsSource = normalizeContinuations(stripStringsAndComments(text));
   const impPy = /(?:^|\n)\s*(?:from\s+([\w\.]+)\s+import\s+([A-Za-z0-9_\,\s\*\.]+)|import\s+([\w\.]+)(?:\s+as\s+\w+)?)/g;
   const impTs = /(?:^|\n)\s*(?:import\s+(?:[^'"]+)\s+from\s+['"]([^'"]+)['"]|import\s+['"]([^'"]+)['"]|require\(\s*['"]([^'"]+)['"]\s*\)|export\s+[^;]+?\s+from\s+['"]([^'"]+)['"])/g;
@@ -197,5 +225,47 @@ export async function parseWithLsp(uri: vscode.Uri, text: string): Promise<Graph
     edges.push({ from: moduleId, to, type: 'import' });
   }
 
-  return { nodes, edges };
+  const status: ParseResult['status'] = symbols.length ? 'ok' : 'partial';
+  // annotate module node with parser truth + whether calls were heuristic
+  const modNode = nodes.find(n => n.id === moduleId);
+  if (modNode) {
+    (modNode as any).lspStatus = status;               // 'ok' | 'partial'
+    (modNode as any).heuristicCalls = !usedCallHierarchy; // boolean
+  }
+  return { nodes, edges, status, diagnostics };
+}
+
+// Try VS Code Call Hierarchy for precise call edges (same-file linking).
+async function tryCallHierarchy(
+  uri: vscode.Uri,
+  functions: Fn[],
+  edges: Edge[]
+): Promise<boolean> {
+  let any = false;
+  for (const fn of functions) {
+    try {
+      const pos = new vscode.Position(fn.start, Math.max(0, fn.col));
+      const prepared = await vscode.commands.executeCommand<any>('vscode.prepareCallHierarchy', uri, pos);
+      const head = Array.isArray(prepared) ? prepared[0] : prepared;
+      if (!head) continue;
+
+      const outgoing = await vscode.commands.executeCommand<any>('vscode.provideCallHierarchyOutgoingCalls', head);
+      if (!Array.isArray(outgoing)) continue;
+
+      for (const oc of outgoing) {
+        const calleeName: string = oc?.to?.name || '';
+        if (!calleeName) continue;
+        // naive: match against known functions within this file (by simple name)
+        const simple = calleeName.split('.').pop()!;
+        const target = functions.find(f => f.name.split('.').pop() === simple);
+        if (target) {
+          edges.push({ from: fn.id, to: target.id, type: 'call', heuristic: false });
+          any = true;
+        }
+      }
+    } catch {
+      // Some servers don’t implement Call Hierarchy; skip silently.
+    }
+  }
+  return any;
 }

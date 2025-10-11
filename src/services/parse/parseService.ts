@@ -1,20 +1,20 @@
 // src/services/parse/parseService.ts
 import * as vscode from 'vscode';
 import { parseFile as doParseFile } from './index';
-import { GraphArtifacts } from '../../shared/types';
+import { ParseResult } from '../../shared/types';
 
-// path -> parsed graph
-export type SymbolIndex = Map<string, GraphArtifacts>;
+// path -> parsed graph (full ParseResult so we keep diagnostics/status)
+export type SymbolIndex = Map<string, ParseResult>;
 
 export class ParseService {
   private index: SymbolIndex = new Map();
 
-  /** Parse one file (LSP-only) and store its graph. */
-  public async parseFile(uri: vscode.Uri, text?: string): Promise<GraphArtifacts> {
-    const artifacts = await doParseFile(uri, text);
-    this.index.set(uri.fsPath, artifacts);
-    return artifacts;
-    // Note: doParseFile throws if LSP couldn't parse; we don't return null.
+  /** Parse one file (LSP-first with fallback) and store its graph. */
+  public async parseFile(uri: vscode.Uri, text?: string): Promise<ParseResult> {
+    const result = await doParseFile(uri, text);
+    this.index.set(uri.fsPath, result);
+    return result;
+    // Note: doParseFile throws only on truly fatal errors (post-fallback).
   }
 
   /** Remove a file from the index by fsPath. */

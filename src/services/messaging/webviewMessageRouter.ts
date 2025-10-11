@@ -16,7 +16,7 @@ interface HandlerDependencies {
   totals: Totals;
   updateStatusBar: () => void;
   gotoSymbol: GotoSymbolFn;
-  allowSamples?: boolean;
+  allowSamples?: boolean;        // unused (kept for API stability)
   allowImpactSummary?: boolean;
   document?: DvDocument;
 }
@@ -29,11 +29,6 @@ export function registerWebviewMessageHandlers(
     try {
       const type = String(message?.type ?? '');
       switch (type) {
-        case 'requestSample':
-          if (deps.allowSamples) {
-            await handleRequestSample(panel, deps.context);
-          }
-          break;
         case 'edit':
           if (deps.document) {
             const text = JSON.stringify(message.payload ?? {}, null, 2);
@@ -97,6 +92,10 @@ export function registerWebviewMessageHandlers(
           deps.totals.funcs = 0;
           deps.updateStatusBar();
           break;
+        case 'copyImportLog':
+          await vscode.env.clipboard.writeText('Open "DepViz" Output channel for full logs.');
+          vscode.window.showInformationMessage('DepViz: Copied hint; see Output → DepViz for details.');
+          break;
         case 'evictFingerprint': {
           const fsPath = String(message.fsPath || '');
           if (fsPath) {
@@ -128,21 +127,6 @@ export function registerWebviewMessageHandlers(
   });
 
   return subscription;
-}
-
-async function handleRequestSample(panel: vscode.WebviewPanel, context: vscode.ExtensionContext) {
-  try {
-    const sampleUri = vscode.Uri.joinPath(context.extensionUri, 'media', 'sampleData.json');
-    const stat = await vscode.workspace.fs.stat(sampleUri);
-    if (!stat) {
-      return;
-    }
-    const sample = await vscode.workspace.fs.readFile(sampleUri);
-    const text = dec(sample);
-    panel.webview.postMessage({ type: 'sampleData', payload: JSON.parse(text) });
-  } catch {
-    // optional asset, ignore errors
-  }
 }
 
 async function handleSaveSnapshot(document: DvDocument, payload: unknown) {

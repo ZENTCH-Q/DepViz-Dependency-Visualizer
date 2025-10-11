@@ -2,7 +2,20 @@
 (function(){
   const D = globalThis.DepViz || (globalThis.DepViz = {});
   const S = D.state;
-
+  const toPosix = (s)=> String(s||'').replace(/\\/g,'/');
+  function normalizeImportLabel(fromFileLabel, spec){
+    const isRel = /^[./]/.test(spec);
+    if (!isRel) return spec; // bare module -> as-is
+    const fromDir = toPosix(fromFileLabel).split('/').slice(0,-1).join('/');
+    let joined = toPosix(`${fromDir}/${spec}`)
+      .replace(/\/+/g,'/')
+      .replace(/^\.\//,'')
+      .replace(/^\/+/, '');
+    // strip common language suffixes
+    joined = joined.replace(/\.(tsx?|mjs|cjs|jsx?|py|go|rs|rb|php|java|kt|cs)$/i, '');
+    return joined;
+  }
+  const makeModId = (label)=> `mod:${toPosix(label)}`;
   function recomputeMissingEdges() {
     const funcs = S.data.nodes.filter(n=>n.kind==='func');
     const modules = new Map(S.data.nodes.filter(n=>n.kind==='module').map(m=>[m.id, m]));
@@ -16,9 +29,25 @@
     for (const [mid, m] of modules){
       const src = String(m.source || '');
       const targets = new Set();
-      src.replace(/^(?:from\s+([\w\.]+)\s+import|import\s+([\w\.]+))/gm, (_,a,b)=>{ const t=a||b; if (t) targets.add(`mod_${h(t)}`); return ''; });
-      src.replace(/^\s*(?:import\s+(?:[^'"\n]+)\s+from\s+['"]([^'"\n]+)['"]|import\s+['"]([^'"\n]+)['"]|const\s+[^=]+=\s*require\(\s*['"]([^'"\n]+)['"]\s*\)|require\(\s*['"]([^'"\n]+)['"]\s*\))/gm, (_,$1,$2,$3)=>{ const t=$1||$2||$3; if (t) targets.add(`mod_${h(t)}`); return ''; });
-      const exist = new Set(); for (const id of targets){ if (modules.has(id)) exist.add(id); }
+      // Python-like
+      src.replace(/^(?:from\s+([\w\.]+)\s+import|import\s+([\w\.]+))/gm, (_,a,b)=>{
+        const t=a||b; if (!t) return '';
+        const label = normalizeImportLabel(m.label||'', t);
+        targets.add(makeModId(label));
+        return '';
+      });
+      // JS/TS/CommonJS (capture all 4 alternatives)
+      src.replace(/^\s*(?:import\s+(?:[^'"\n]+)\s+from\s+['"]([^'"\n]+)['"]|import\s+['"]([^'"\n]+)['"]|const\s+[^=]+=\s*require\(\s*['"]([^'"\n]+)['"]\s*\)|require\(\s*['"]([^'"\n]+)['"]\s*\))/gm,
+        (_,$1,$2,$3,$4)=>{
+          const t=$1||$2||$3||$4; if (!t) return '';
+          const label = normalizeImportLabel(m.label||'', t);
+          targets.add(makeModId(label));
+          return '';
+        });
+      const exist = new Set();
+      for (const id of targets) {
+        if (modules.has(id)) exist.add(id);
+      }
       importPrefs.set(mid, exist);
     }
     const have = new Set(S.data.edges.map(e=>`${e.from}->${e.to}:${e.type}`));
@@ -28,13 +57,14 @@
       const callerMod = (p && p.kind === 'class') ? p.parent : f.parent;
       const prefMods = importPrefs.get(callerMod) || new Set();
       const names = new Set();
-      // only bare identifiers that are NOT preceded by a dot (skip obj.name())
-      // and skip obvious keywords
       const KW = /^(new|class|if|for|while|switch|return|function)$/;
-      code.replace(/(?<!\.)\b([A-Za-z_][A-Za-z0-9_]*)\s*\(/g, (_,$name)=>{
+      code.replace(/\b([A-Za-z_][A-Za-z0-9_]*)\s*\(/g, (match, $name, idx) => {
+        // emulate (?<!\.) by checking previous char
+        const prev = idx > 0 ? code[idx - 1] : '';
+        if (prev === '.') return match;
         const name = String($name);
         if (!KW.test(name)) names.add(name);
-        return '';
+        return match;
       });
       for (const name of names){
         const cands = nameToFns.get(name) || [];
