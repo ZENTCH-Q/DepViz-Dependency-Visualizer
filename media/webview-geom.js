@@ -33,7 +33,9 @@
       const parent = n.parent && F.nodeMap?.get(n.parent);
       if (parent && parent.kind==='module' && parent.collapsed && n.docked){
         const b = S.moduleBoxes.get(parent.id) || { x: parent.x||0, y: parent.y||0, w: 220, h: 120 };
-        return { x: b.x + b.w/2, y: b.y + b.h/2 };
+        const h = Array.from(n.id).reduce((a,c)=>((a*16777619)^(c.charCodeAt(0)))>>>0,2166136261);
+        const dx = ((h & 15) - 8) * 1.2, dy = (((h>>4)&15) - 8) * 1.2;
+        return { x: b.x + b.w/2 + dx, y: b.y + b.h/2 + dy };
       }
       if (parent && parent.kind==='class' && n.docked) {
         const gp = parent.parent && F.nodeMap?.get(parent.parent);

@@ -66,10 +66,11 @@
       const prefMods = importPrefs.get(callerMod) || new Set();
       const names = new Set();
       const KW = /^(new|class|if|for|while|switch|return|function)$/;
+      const callerModNode = D.indices?.nodeMap?.get(callerMod);
+      const isPy = /\.\s*py$/i.test(String(callerModNode?.fsPath||''));
       code.replace(/\b([A-Za-z_][A-Za-z0-9_]*)\s*\(/g, (match, $name, idx) => {
-        // emulate (?<!\.) by checking previous char
         const prev = idx > 0 ? code[idx - 1] : '';
-        if (prev === '.') return match;
+        if (!isPy && prev === '.') return match; // allow dotted calls for Python
         const name = String($name);
         if (!KW.test(name)) names.add(name);
         return match;
