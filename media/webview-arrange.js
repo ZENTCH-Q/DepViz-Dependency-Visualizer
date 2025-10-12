@@ -10,6 +10,30 @@
   const SLOT_H = C.SLOT_H || 50;
   const GAP = C.GAP || 8;
 
+  function measureModule(m){
+    const kids = S.data.nodes.filter(n => n.docked && n.parent === m.id && (n.kind==='func' || n.kind==='class'));
+    const classKids = kids.filter(k=>k.kind==='class');
+    const funcKids  = kids.filter(k=>k.kind==='func');
+    // include widths of immediate children and class methods
+    let childW = 160;
+    for (const ch of kids) childW = Math.max(childW, meas(ch.label, 12, false) + 20);
+    for (const c of classKids) {
+      const methods = S.data.nodes.filter(n=>n.docked && n.kind==='func' && n.parent===c.id);
+      for (const f of methods) childW = Math.max(childW, meas(f.label, 12, false) + 20);
+    }
+    const titleW = meas(m.label, 12, true) + MOD_PAD*2;
+    const w = Math.max(220, titleW, childW + MOD_PAD*2);
+    // heights
+    let classesH = 0;
+    for (const c of classKids){
+      const methods = S.data.nodes.filter(n=>n.docked && n.kind==='func' && n.parent===c.id);
+      classesH += (MOD_HEAD + MOD_PAD + (methods.length * (SLOT_H + GAP)) + MOD_PAD);
+    }
+    const modH_open   = MOD_HEAD + MOD_PAD + (funcKids.length * (SLOT_H + GAP)) + classesH + MOD_PAD;
+    const modH_closed = MOD_HEAD + MOD_PAD + MOD_PAD;
+    return { w, h: (m.collapsed ? modH_closed : modH_open) };
+  }
+
   function autoArrangeByFolders(){
     const mods = S.data.nodes.filter(n => n.kind==='module');
     const buckets = new Map();
@@ -65,20 +89,22 @@
   function autoArrangeLikeImport(origin){
     const mods = S.data.nodes.filter(n=>n.kind==='module');
     if (!mods.length) return;
-    const spacingX = 320, spacingY = 220;
     const start = origin || S.spawnOrigin || S.lastCursorWorld || { x: 40, y: 40 };
-    let seq = 0;
-    const nextPos = (o, dx, dy) => {
-      const k = seq++;
-      const row = Math.floor((-1 + Math.sqrt(1 + 8*k)) / 2);
-      const used = row * (row + 1) / 2;
-      const col = k - used;
-      return { x: o.x + (row - col) * dx, y: o.y + col * dy };
-    };
+    // column spacing should roughly match typical card width
+    const colGapX = 340;         // horizontal distance between columns
+    const rowGapY = 32;          // extra gap between stacked modules
+    const cols = Math.max(1, Math.ceil(Math.sqrt(mods.length)));
+    const colHeights = Array(cols).fill(start.y);
+    const colX = (i)=> start.x + i * colGapX;
+    // stable order
     const sorted = mods.slice().sort((a,b)=>String(a.label||'').localeCompare(String(b.label||'')));
     for (const m of sorted){
-      const p = nextPos(start, spacingX, spacingY);
-      m.x = p.x; m.y = p.y;
+      const { h } = measureModule(m);
+      // pick the column with the smallest current height
+      let best = 0; for (let i=1;i<cols;i++) if (colHeights[i] < colHeights[best]) best = i;
+      m.x = colX(best);
+      m.y = colHeights[best];
+      colHeights[best] += h + rowGapY;
     }
   }
 

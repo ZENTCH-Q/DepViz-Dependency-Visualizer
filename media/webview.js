@@ -482,6 +482,7 @@
           DepViz.data?.mergeArtifacts?.(msg.payload);
           DepViz.data?.normalizeNodes?.();
           DepViz.data?.recomputeMissingEdges?.();
+          try { DepViz.arrange?.autoArrangeLikeImport?.(state.spawnOrigin); } catch {}
           schedule();
           pushHistory('Import artifacts');
         }
