@@ -74,6 +74,10 @@ export async function resolveCrossFileCallsForFile(
   }
 }
 
+export function clearCrossFileCache(): void {
+  chCache.clear();
+}
+
 function toPosition(fn: FuncNode): vscode.Position | null {
   try {
     const line = Math.max(0, fn.range?.line ?? 0);

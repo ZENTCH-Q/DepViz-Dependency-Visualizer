@@ -6,7 +6,7 @@
     data:{nodes:[],edges:[]},
     moduleBoxes:new Map(),
     needsFrame:false,
-    typeVisibility:{import:true, call:true},
+    typeVisibility:{import:false, call:true},
     focusId:null, focusModuleId:null,
     lastCursorWorld:{x:0,y:0},
     spawnSeq:0, lastSpawnAtMs:0, spawnOrigin:null,

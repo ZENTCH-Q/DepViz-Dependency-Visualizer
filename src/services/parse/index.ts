@@ -101,7 +101,7 @@ function staticImportArtifacts(moduleId: string, text: string, fromFsPath?: stri
     if (mode === 'relative' && !REL.test(label0)) continue;
 
     const toId = makeModuleId(label);
-    edges.push({ from: moduleId, to: toId, type: 'import', provenance: 'lsp', confidence: 1 });
+    edges.push({ from: moduleId, to: toId, type: 'import', provenance: 'ast', confidence: 1 });
 
     // Add ghost module so the edge can render
     if (!ghosts.some(n => n.id === toId)) {

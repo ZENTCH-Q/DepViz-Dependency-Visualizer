@@ -8,6 +8,7 @@ import { dec } from '../../shared/encoding';
 import { DvDocument } from '../../document/dvDocument';
 import { GotoSymbolFn } from '../navigation/gotoSymbol';
 import { isInboundMessage } from '../../shared/messages';
+import { clearCrossFileCache } from '../resolve/crossFileCalls';
 
 type ViewPreference = 'beside' | 'active';
 
@@ -89,6 +90,7 @@ export function registerWebviewMessageHandlers(
 
         case 'clearCanvas':
           deps.importService.resetFingerprints();
+          try { clearCrossFileCache(); } catch {}
           deps.totals.modules = 0;
           deps.totals.funcs = 0;
           deps.updateStatusBar();
@@ -106,7 +108,7 @@ export function registerWebviewMessageHandlers(
         }
 
         case 'gotoDef':
-        case 'peekRefs': { // (kept above) safe double-case
+        case 'peekRefs': {
           const m: any = message;
           const target = m.target || {};
           const name = String(target.name || '');
@@ -122,7 +124,7 @@ export function registerWebviewMessageHandlers(
           break;
 
         default:
-          // ignore unknowns (guarded by isInboundMessage list anyway)
+          // ignore unknowns
           break;
       }
     } catch (err: any) {
@@ -175,7 +177,6 @@ async function handleRequestImportSnapshot(panel: vscode.WebviewPanel) {
     const text = dec(content);
     const parsed = JSON.parse(text);
 
-    // If it's a full snapshot, load it; if it's raw artifacts, add them.
     if (parsed && parsed.data && Array.isArray(parsed.data.nodes) && Array.isArray(parsed.data.edges)) {
       panel.webview.postMessage({ type: 'loadSnapshot', payload: parsed });
     } else if (parsed && Array.isArray(parsed.nodes) && Array.isArray(parsed.edges)) {

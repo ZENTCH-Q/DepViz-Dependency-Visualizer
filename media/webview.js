@@ -100,7 +100,7 @@
 
   // --- Legend with real stroke styles ---
   const legend = document.getElementById('legend');
-  legend.innerHTML = [legendItem('import'), legendItem('call')].join('');
+  legend.innerHTML = [legendItem('call')].join('');
   legend.querySelectorAll('.legend-item').forEach(el=>{
     el.addEventListener('click', ()=>{
       const t = el.getAttribute('data-type');
@@ -469,6 +469,7 @@
   svg.addEventListener('drop', onDrop);
 
   // --- Load & messages ---
+  try { S._wasEmptyBeforeImport = !(S.data && S.data.nodes && S.data.nodes.length); } catch {}
   try { schedule(); pushHistory('Initial'); } catch { schedule(); }
 
   if (VS) {
@@ -477,12 +478,40 @@
         const msg = event.data;
         console.log('[DepViz] message:', msg?.type);
         if (msg.type === 'addArtifacts') {
+          const p = msg.payload || {};
+          if (!p.sourceId) {
+            try {
+              const first = (p.nodes && p.nodes.find(n => n.fsPath)) || null;
+              if (first && first.fsPath) {
+                // crude but stable: folder of first file
+                p.sourceId = String(first.fsPath).replace(/[\\/][^\\/]+$/, '');
+              }
+            } catch {}
+          }
+
+          // If this batch is a full replacement for that source, remember it
+          if (p.fullRescan && p.sourceId) {
+            // Record so we can prime positions once per rescan
+            S._lastFullRescanFor = p.sourceId;
+          }
+
           // Pre-position incoming modules so they don't stack and appear near drop
-          try { primeSpawnPositions(msg.payload); } catch {}
-          DepViz.data?.mergeArtifacts?.(msg.payload);
+          try { primeSpawnPositions(p); } catch {}
+
+          // Merge but defer heavy recompute unless caller says this ends a batch
+          DepViz.data?.mergeArtifacts?.(p);
           DepViz.data?.normalizeNodes?.();
-          DepViz.data?.recomputeMissingEdges?.();
-          try { DepViz.arrange?.autoArrangeLikeImport?.(state.spawnOrigin); } catch {}
+
+          if (p.endOfBatch || !p.batchId) {
+            // Edges after final batch only to avoid flicker / false-unresolved
+            DepViz.data?.recomputeMissingEdges?.();
+            // If this is the very first graph on an empty canvas OR a full rescan, auto-arrange
+            try {
+              const wasEmpty = (S._wasEmptyBeforeImport === true) || ((S._wasEmptyBeforeImport = false), false);
+              const firstTime = wasEmpty || (p.fullRescan && p.sourceId === S._lastFullRescanFor);
+              if (firstTime) DepViz.arrange?.autoArrangeLikeImport?.(S.spawnOrigin);
+            } catch {}
+          }
           schedule();
           pushHistory('Import artifacts');
         }
@@ -698,6 +727,7 @@
       // edges
       colorIdx = 0;
       for (const e of state.data.edges) {
+        if (e.type === 'import') continue;
         const toMissing = !nodeMap.has(e.to) && e.type === 'import';
         const path = createSvg('path', { class: `edge ${e.type}${toMissing?' unresolved':''}` });
         path.style.opacity = nextEdgeOpacity();
@@ -964,8 +994,7 @@
     }
     return null;
   }
-  // Should an edge be drawn behind expanded modules? (i.e., does its bbox intersect
-  // any expanded module card that is not the edge’s own home modules)
+
   function edgeShouldGoBehindExpandedModules(edge, edgeBBox){
     try {
       const fromHome = homeModuleId(edge.from);

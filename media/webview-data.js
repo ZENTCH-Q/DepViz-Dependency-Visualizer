@@ -7,12 +7,18 @@
     const isRel = /^[./]/.test(spec);
     if (!isRel) return spec; // bare module -> as-is
     const fromDir = toPosix(fromFileLabel).split('/').slice(0,-1).join('/');
-    let joined = toPosix(`${fromDir}/${spec}`)
-      .replace(/\/+/g,'/')
-      .replace(/^\.\//,'')
-      .replace(/^\/+/, '');
+    // Join and normalize ./ and ../ segments
+    const raw = toPosix(`${fromDir}/${spec}`).replace(/\/+/g,'/').replace(/^\/+/, '');
+    const parts = [];
+    for (const seg of raw.split('/')) {
+      if (seg === '' || seg === '.') continue;
+      if (seg === '..') { if (parts.length) parts.pop(); continue; }
+      parts.push(seg);
+    }
+    let joined = parts.join('/');
     // strip common language suffixes
     joined = joined.replace(/\.(tsx?|mjs|cjs|jsx?|py|go|rs|rb|php|java|kt|cs)$/i, '');
+    joined = joined.replace(/\/(index|__init__)$/i, '');
     return joined;
   }
   const makeModId = (label)=> `mod:${toPosix(label)}`;
@@ -51,6 +57,8 @@
       importPrefs.set(mid, exist);
     }
     const have = new Set(S.data.edges.map(e=>`${e.from}->${e.to}:${e.type}`));
+
+    // 2) Infer CALL edges between functions using import preferences
     for (const f of funcs){
       const code = String(f.snippet||'');
       const p = D.indices?.nodeMap?.get(f.parent);
@@ -77,7 +85,13 @@
           if (prefMods.has(candMod)) { best = cand; break; }
         }
         if (!best) best = cands.find(c=>c.id!==f.id) || null;
-        if (best){ const key = `${f.id}->${best.id}:call`; if (!have.has(key)) { S.data.edges.push({ from: f.id, to: best.id, type: 'call' }); have.add(key); } }
+        if (best){
+          const key = `${f.id}->${best.id}:call`;
+          if (!have.has(key)) {
+            S.data.edges.push({ from: f.id, to: best.id, type: 'call', provenance: 'heuristic', confidence: 0.6 });
+            have.add(key);
+          }
+        }
       }
     }
   }
@@ -89,12 +103,45 @@
   }
 
   function mergeArtifacts(payload){
-    const ids = new Set(S.data.nodes.map(n=>n.id));
-    for (const n of (payload.nodes || [])) {
-    if (!ids.has(n.id)) {
-      if (n.kind==='func' && typeof n.docked !== 'boolean') n.docked = true;
-      S.data.nodes.push(n); ids.add(n.id);
+    if (payload.fullRescan && payload.sourceId) {
+      const keep = [];
+      for (const n of (S.data.nodes || [])) {
+        // assume nodes may carry sourceId; if not, keep them
+        if (n.sourceId && n.sourceId === payload.sourceId) continue;
+        keep.push(n);
+      }
+      S.data.nodes = keep;
+      // Also drop edges incident to evicted nodes
+      const alive = new Set(S.data.nodes.map(n=>n.id));
+      S.data.edges = (S.data.edges || []).filter(e => alive.has(e.from) && alive.has(e.to));
     }
+
+    // Build index for upsert
+    const byId = new Map(S.data.nodes.map(n => [n.id, n]));
+    for (const incoming of (payload.nodes || [])) {
+      // default docking for funcs
+      if (incoming.kind === 'func' && typeof incoming.docked !== 'boolean') incoming.docked = true;
+      // attach sourceId if the batch provides it (helps future rescans)
+      if (payload.sourceId && !incoming.sourceId) incoming.sourceId = payload.sourceId;
+
+      const existing = byId.get(incoming.id);
+      if (!existing) {
+        S.data.nodes.push(incoming);
+        byId.set(incoming.id, incoming);
+        continue;
+      }
+      // Upsert: prefer incoming fields; preserve runtime-only layout fields if not provided
+      const preserved = {
+        x: existing.x, y: existing.y, dx: existing.dx, dy: existing.dy,
+        collapsed: existing.collapsed, docked: existing.docked,
+        _w: existing._w
+      };
+      const merged = Object.assign({}, existing, incoming);
+      // keep layout if incoming doesn’t specify
+      for (const k of Object.keys(preserved)) {
+        if (typeof merged[k] === 'undefined') merged[k] = preserved[k];
+      }
+      Object.assign(existing, merged);
     }
     const ekeys = new Set(S.data.edges.map(e => `${e.from}->${e.to}:${e.type}`));
     for (const e of (payload.edges || [])) {

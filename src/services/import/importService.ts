@@ -75,13 +75,23 @@ export class ImportService {
         };
 
         const batchSize = 8;
+        const batchId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+
         for (let i = 0; i < capped.length; i += batchSize) {
           if (token.isCancellationRequested) break;
           const slice = capped.slice(i, i + batchSize);
-          await Promise.all(slice.map(u => this.importUri(u, panel, token, stats).catch(() => {})));
+          await Promise.all(slice.map(u => this.importUri(u, panel, token, stats, batchId).catch(() => {})));
           const processed = Math.min(capped.length, i + batchSize);
           progress.report({ message: `${processed}/${capped.length}` });
         }
+
+        // Signal end-of-batch so the webview recomputes inferred edges once
+        try {
+          await panel.webview.postMessage({
+            type: 'addArtifacts',
+            payload: { nodes: [], edges: [], batchId, endOfBatch: true }
+          });
+        } catch {}
 
         const msg = [
           `Imported OK: ${stats.importedOk}`,
@@ -100,7 +110,8 @@ export class ImportService {
     uri: vscode.Uri,
     panel: vscode.WebviewPanel,
     token?: vscode.CancellationToken,
-    stats?: BatchStats
+    stats?: BatchStats,
+    batchId?: string
   ): Promise<void> {
     try {
       if (token?.isCancellationRequested) return;
@@ -110,7 +121,7 @@ export class ImportService {
         const children = await vscode.workspace.fs.readDirectory(uri);
         for (const [name] of children) {
           if (SKIP_DIRS.has(name)) continue;
-          await this.importUri(vscode.Uri.joinPath(uri, name), panel, token, stats);
+          await this.importUri(vscode.Uri.joinPath(uri, name), panel, token, stats, batchId);
         }
         return;
       }
@@ -148,7 +159,8 @@ export class ImportService {
 
       // Always merge something (even nolsp: module-only + imports)
       const artifacts: GraphArtifacts = { nodes: result.nodes, edges: result.edges };
-      const ok = await panel.webview.postMessage({ type: 'addArtifacts', payload: artifacts });
+      const payload = batchId ? { ...artifacts, batchId } : artifacts;
+      const ok = await panel.webview.postMessage({ type: 'addArtifacts', payload });
       if (!ok) {
         stats && (stats.failed++);
         throw new Error('Webview rejected message');
@@ -194,7 +206,8 @@ export class ImportService {
     text: string,
     panel: vscode.WebviewPanel,
     token?: vscode.CancellationToken,
-    stats?: BatchStats
+    stats?: BatchStats,
+    batchId?: string
   ): Promise<void> {
     try {
       if (token?.isCancellationRequested) return;
@@ -230,7 +243,8 @@ export class ImportService {
       }
 
       const artifacts: GraphArtifacts = { nodes: result.nodes, edges: result.edges };
-      const ok = await panel.webview.postMessage({ type: 'addArtifacts', payload: artifacts });
+      const payload = batchId ? { ...artifacts, batchId } : artifacts;
+      const ok = await panel.webview.postMessage({ type: 'addArtifacts', payload });
       if (!ok) {
         stats && (stats.failed++);
         throw new Error('Webview rejected message');
