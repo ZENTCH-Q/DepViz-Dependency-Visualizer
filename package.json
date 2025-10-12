@@ -2,7 +2,7 @@
   "name": "depviz",
   "displayName": "DepViz — Dependency Visualizer",
   "description": "Visualize function calls, call stacks, and architecture diagrams in VS Code. Python/TS/JS (and more via LSP).",
-  "version": "0.1.6",
+  "version": "0.1.8",
   "publisher": "Zentch",
   "engines": {
     "vscode": "^1.85.0"
