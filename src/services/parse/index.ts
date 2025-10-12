@@ -2,8 +2,9 @@
 import * as vscode from 'vscode';
 import { ParseResult, GraphArtifacts, Diagnostic, Edge, ModuleNode } from '../../shared/types';
 import { makeModuleId } from './utils';
+import { stripStringsAndComments, resolveImportLabelByText } from '../../shared/parseUtils';
 
-export async function parseFile(uri: vscode.Uri, text?: string, timeoutMs = 3000): Promise<ParseResult> {
+export async function parseFile(uri: vscode.Uri, text?: string, timeoutMs = 10000): Promise<ParseResult> {
   const src = text ?? (await vscode.workspace.openTextDocument(uri)).getText();
 
   try {
@@ -19,7 +20,7 @@ export async function parseFile(uri: vscode.Uri, text?: string, timeoutMs = 3000
 
     // Always add lightweight import edges here (single source of truth)
     const modId = res.nodes.find(n => n.kind === 'module')!.id;
-    const imports = staticImportEdges(modId, src);
+    const { edges: importEdges, ghosts } = staticImportArtifacts(modId, src, uri.fsPath);
 
     // annotate module node status if missing
     for (const n of res.nodes) {
@@ -28,7 +29,7 @@ export async function parseFile(uri: vscode.Uri, text?: string, timeoutMs = 3000
       }
     }
 
-    return { ...res, edges: [...(res.edges || []), ...imports] };
+    return { ...res, nodes: [...res.nodes, ...ghosts], edges: [...(res.edges || []), ...importEdges] };
   } catch (err: any) {
     // Fallback: module + imports only
     const diag: Diagnostic = {
@@ -37,9 +38,9 @@ export async function parseFile(uri: vscode.Uri, text?: string, timeoutMs = 3000
       message: `LSP unavailable or slow: ${err?.message ?? 'timeout'}`
     };
     const mod: ModuleNode = moduleOnlyNode(uri, src);
-    const edges = staticImportEdges(mod.id, src);
+    const { edges: importEdges, ghosts } = staticImportArtifacts(mod.id, src, uri.fsPath);
     const modWithStatus: ModuleNode = { ...mod, lspStatus: 'nolsp', heuristicCalls: false };
-    const partial: GraphArtifacts = { nodes: [modWithStatus], edges };
+    const partial: GraphArtifacts = { nodes: [modWithStatus, ...ghosts], edges: importEdges };
     return { ...partial, status: 'nolsp', diagnostics: [diag] };
   }
 }
@@ -56,39 +57,64 @@ function moduleOnlyNode(uri: vscode.Uri, src: string): ModuleNode {
   };
 }
 
-// Single lightweight import sniffing (JS/TS/Python; others via 'all' opt if you insist)
-function staticImportEdges(moduleId: string, text: string): Edge[] {
-  const mode = (vscode.workspace.getConfiguration('depviz').get<string>('importsMode') || 'relative') as 'relative'|'all'|'off';
-  if (mode === 'off') return [];
+/**
+ * Build import edges + ghost module nodes so edges can render even when target not present.
+ * - Strips strings/comments to avoid false positives (e.g. '\n' becoming '/n').
+ * - Python: only Python import regexes.
+ * - JS/TS: standard ESM + CommonJS.
+ * - Mode:
+ *    'relative' (default): only relative imports
+ *    'all'               : include bare imports too (e.g. "import numpy")
+ *    'off'               : disabled
+ */
+function staticImportArtifacts(moduleId: string, text: string, fromFsPath?: string): { edges: Edge[]; ghosts: ModuleNode[] } {
+  const cfg = vscode.workspace.getConfiguration('depviz');
+  const mode = (cfg.get<string>('importsMode') || 'relative') as 'relative' | 'all' | 'off';
+  if (mode === 'off') return { edges: [], ghosts: [] };
+
+  const cleaned = stripStringsAndComments(text);
+  const isPy = (fromFsPath || '').toLowerCase().endsWith('.py');
   const targets = new Set<string>();
-  // Python
-  text.replace(/^\s*from\s+([\w\.]+)\s+import\b/igm, (_m, a) => { targets.add(String(a)); return ''; });
-  text.replace(/^\s*import\s+([\w\.]+)/igm, (_m, a) => { targets.add(String(a)); return ''; });
-  // JS/TS (ESM/CommonJS)
-  text.replace(/^\s*import\s+[^'"]*?['"]([^'"]+)['"]/igm, (_m, a) => { targets.add(String(a)); return ''; });
-  text.replace(/require\(\s*['"]([^'"]+)['"]\s*\)/g, (_m, a) => { targets.add(String(a)); return ''; });
-  if (mode === 'all') {
-    // Go
-    text.replace(/^\s*import\s+(?:\([^\)]*\)|"([^"]+)")/igm, (_m, a) => { if (a) targets.add(String(a)); return ''; });
-    text.replace(/^\s*import\s*\(\s*([\s\S]*?)\)/igm, (_m, block: string) => {
-      const matches = (block.match(/"([^"]+)"/g) || []) as string[];
-      matches.forEach((s: string) => targets.add(s.replace(/"/g, ''))); return '';
-    });
-    // Java/C#
-    text.replace(/^\s*(?:import|using)\s+([A-Za-z0-9_.]+)/igm, (_m, a) => { targets.add(String(a)); return ''; });
-    // Rust
-    text.replace(/^\s*use\s+([A-Za-z0-9_:]+)/igm, (_m, a) => { targets.add(String(a).replace(/::/g, '/')); return ''; });
+
+  if (isPy) {
+    cleaned.replace(/^\s*from\s+([A-Za-z_][\w\.]*)\s+import\b/igm, (_m, a) => { targets.add(String(a)); return ''; });
+    cleaned.replace(/^\s*import\s+([A-Za-z_][\w\.]*)/igm,               (_m, a) => { targets.add(String(a)); return ''; });
+  } else {
+    cleaned.replace(/^\s*import\s+[^'"]*?['"]([^'"]+)['"]/igm,          (_m, a) => { targets.add(String(a)); return ''; });
+    cleaned.replace(/require\(\s*['"]([^'"]+)['"]\s*\)/g,               (_m, a) => { targets.add(String(a)); return ''; });
+    if (mode === 'all') {
+      // A few extras when user opts in
+      cleaned.replace(/^\s*(?:import|using)\s+([A-Za-z0-9_.]+)/igm,      (_m, a) => { targets.add(String(a)); return ''; }); // Java/C#
+      cleaned.replace(/^\s*use\s+([A-Za-z0-9_:]+)/igm,                   (_m, a) => { targets.add(String(a).replace(/::/g, '/')); return ''; }); // Rust
+    }
   }
+
   const edges: Edge[] = [];
+  const ghosts: ModuleNode[] = [];
   const REL = /^(\.?\.?[/\\])/;
-  const { makeModuleId, normalizePosixPath } = require('./utils') as typeof import('./utils');
-  const normalizeTarget = (s: string) => s.replace(/^\.\/+/, '').replace(/^\/+/, '').replace(/\\/g, '/');
-  for (const t of targets) {
-    if (mode === 'relative' && !REL.test(t)) continue;
-    const toId = makeModuleId(normalizeTarget(String(t)));
+
+  for (const raw of targets) {
+    // Normalize to a canvas label
+    const label0 = resolveImportLabelByText(fromFsPath || '', String(raw)) || String(raw);
+    const label = label0.replace(/\\/g, '/').replace(/^\.\//, '').replace(/^\/+/, '');
+
+    if (mode === 'relative' && !REL.test(label0)) continue;
+
+    const toId = makeModuleId(label);
     edges.push({ from: moduleId, to: toId, type: 'import', provenance: 'lsp', confidence: 1 });
+
+    // Add ghost module so the edge can render
+    if (!ghosts.some(n => n.id === toId)) {
+      ghosts.push({
+        id: toId,
+        kind: 'module',
+        label,
+        collapsed: true,
+        heuristicCalls: false
+      } as ModuleNode);
+    }
   }
-  return edges;
+  return { edges, ghosts };
 }
 
 function timeout<T>(p: Promise<T>, ms: number): Promise<T> {

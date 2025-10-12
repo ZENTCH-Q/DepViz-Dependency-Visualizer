@@ -43,8 +43,11 @@ export class WebviewController implements vscode.Disposable {
     this.panel.onDidDispose(() => this.sub?.dispose());
   }
 
-  post(message: WebviewOutbound): Thenable<boolean> {
-    return this.panel.webview.postMessage(message);
+  /** Always return a real Promise so callers can .catch/.finally safely */
+  post(message: WebviewOutbound): Promise<boolean> {
+    const t = this.panel.webview.postMessage(message);
+    // Promise.resolve will assimilate Thenables into a native Promise<boolean>
+    return Promise.resolve(t as unknown as Promise<boolean>);
   }
 
   dispose(): void {

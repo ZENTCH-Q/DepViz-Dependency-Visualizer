@@ -19,7 +19,7 @@ export class DvDocument implements vscode.CustomDocument {
 
   private readonly onDidDisposeEmitter = new vscode.EventEmitter<void>();
   private readonly onDidChangeEmitter =
-    new vscode.EventEmitter<{ label?: string; undo(): void; redo(): void }>();
+    new vscode.EventEmitter<{ label?: string; undo(): Thenable<void>; redo(): Thenable<void> }>();
 
   public readonly onDidDispose = this.onDidDisposeEmitter.event;
   public readonly onDidChangeCustomDocument = this.onDidChangeEmitter.event;
@@ -50,8 +50,14 @@ export class DvDocument implements vscode.CustomDocument {
     this.text = nextText;
     this.onDidChangeEmitter.fire({
       label,
-      undo: () => { this.text = prev; },
-      redo: () => { this.text = nextText; }
+      undo: () => {
+        this.text = prev;
+        return Promise.resolve();
+      },
+      redo: () => {
+        this.text = nextText;
+        return Promise.resolve();
+      }
     });
   }
 
@@ -82,8 +88,14 @@ export class DvDocument implements vscode.CustomDocument {
     this.savedText = text;
     this.onDidChangeEmitter.fire({
       label: 'Revert',
-      undo: () => { this.text = previous; },
-      redo: () => { this.text = text; }
+      undo: () => {
+        this.text = previous;
+        return Promise.resolve();
+      },
+      redo: () => {
+        this.text = text;
+        return Promise.resolve();
+      }
     });
   }
 
