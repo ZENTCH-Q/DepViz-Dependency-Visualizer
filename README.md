@@ -7,7 +7,7 @@ Visualize function calls, imports, and architecture right inside VS Code. Works 
 ## Features
 
 - **Interactive graph canvas** of modules, classes, and functions
-- **Import & call edges** with live type toggles in the legend
+- **call edges** with live type toggles in the legend
 - **Impact slice** (blast radius) both outbound and inbound
 - **Drag & drop** folders/files/URLs to import
 - **Auto‑arrange** to tidy your canvas
@@ -73,7 +73,7 @@ All settings live under the `depviz.*` namespace.
 
 ### Legend (Edge Types)
 - Click legend items to toggle visibility per edge type:
-  - **import** — module import edges (solid line)
+  - **import** — module import edges (solid line) (Removed due to noise and misinterpretation)
   - **call** — function/method call edges (solid line with a centered triangle marker)
 
 ### Search
