@@ -2,6 +2,7 @@
 
 Visualize function calls, imports, and architecture right inside VS Code. Works great with Python and TypeScript/JavaScript (and other languages via your LSP).
 ---
+![Showcase](https://github.com/user-attachments/assets/33de3d2e-513a-4a20-bf1e-c599ffe845b9)
 
 ## Features
 
