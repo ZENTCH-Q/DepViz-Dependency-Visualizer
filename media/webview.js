@@ -72,8 +72,43 @@
   // Restore original canvas menu handler (delegates to UI layer)
   wrapper.addEventListener('contextmenu', (e)=>{
     if (e.target !== wrapper && e.target !== svg) return;
-    D.ui && D.ui.showCanvasMenu && D.ui.showCanvasMenu(e, VS);
+    e.preventDefault();
+    const hasSlice = !!(globalThis.DepViz?.state?.slice);
+    const hasFocus = !!(state.focusId || state.focusModuleId);
+    const items = [];
+    if (hasSlice || hasFocus) {
+      items.push({
+        id: 'reset_highlights',
+        label: 'Reset highlights',
+        run: () => {
+          try { if (globalThis.DepViz?.state?.slice) applySliceOverlay(null); } catch {}
+          if (state.focusId || state.focusModuleId) {
+            state.focusId = null;
+            state.focusModuleId = null;
+            applyTypeVisibility();
+          }
+          schedule();
+        }
+      });
+    }
+    // Put Collapse/Expand right after Reset (if present)
+    items.push(
+      { id:'collapse_all', label:'Collapse all cards', run: ()=>{ collapseAllModules(true); } },
+      { id:'expand_all',   label:'Expand all cards',   run: ()=>{ collapseAllModules(false); } },
+      { id:'auto_arrange', label:'Auto arrange',       run: ()=>{ DepViz.arrange?.autoArrangeLikeImport?.(); schedule(); } },
+      { id:'search',       label:'Search…',            run: ()=>{ try { showSearchBar(); } catch {} } },
+      { id:'clear',        label:'Clear canvas',       run: ()=>{ state.data = { nodes: [], edges: [] }; DepViz.data?.normalizeNodes?.(); schedule(); VS && VS.postMessage({ type: 'clearCanvas' }); } }
+    );
+    // Defer to any UI renderer we have
+    if (D.ui?.showCtx) D.ui.showCtx(e, items);
   });
+
+  function collapseAllModules(flag){
+    try {
+      for (const n of (state.data.nodes||[])) if (n.kind==='module') n.collapsed = !!flag;
+      schedule();
+    } catch {}
+  }
 
   function doDelete(t){
     if (t.kind==='edge' && t.el?._depvizEdge) {
@@ -501,16 +536,9 @@
           // Merge but defer heavy recompute unless caller says this ends a batch
           DepViz.data?.mergeArtifacts?.(p);
           DepViz.data?.normalizeNodes?.();
-
           if (p.endOfBatch || !p.batchId) {
-            // Edges after final batch only to avoid flicker / false-unresolved
+            // Finalize edges; do NOT auto-arrange on import.
             DepViz.data?.recomputeMissingEdges?.();
-            // If this is the very first graph on an empty canvas OR a full rescan, auto-arrange
-            try {
-              const wasEmpty = (S._wasEmptyBeforeImport === true) || ((S._wasEmptyBeforeImport = false), false);
-              const firstTime = wasEmpty || (p.fullRescan && p.sourceId === S._lastFullRescanFor);
-              if (firstTime) DepViz.arrange?.autoArrangeLikeImport?.(S.spawnOrigin);
-            } catch {}
           }
           schedule();
           pushHistory('Import artifacts');
@@ -662,7 +690,6 @@
             { id:'open_file', label:'Open File', run: ()=>{ try { if (VS && m.fsPath){ VS.postMessage({ type:'openAt', fsPath: m.fsPath, line:0, col:0, view:'beside' }); } } catch{} } },
             { id:'slice_out', label:'Impact slice (outbound)', run: ()=>{ const s=computeSlice(m.id,'out'); applySliceOverlay(s); postImpactSummary(s,'out'); } },
             { id:'slice_in',  label:'Reverse slice (inbound)', run: ()=>{ const s=computeSlice(m.id,'in');  applySliceOverlay(s); postImpactSummary(s,'in'); } },
-            { id:'delete', label:'Remove from canvas', run: ()=> doDelete({ kind:'module', id: m.id }) }
           ];
           if (hasLostChildrenOfModule(m.id)) {
             items.splice(2, 0, { id:'reassemble_mod', label:'Reassemble children', run: ()=> reassembleModuleById(m.id) });
@@ -759,12 +786,8 @@
         wireEdgeHover(path);
         // disable click highlight on edges
         path.addEventListener('click', (ev)=>{ ev.stopPropagation(); /* no highlight */ });
-        path.addEventListener('contextmenu', (e)=>{
-          const items=[{id:'delete',label:'Remove from canvas',run:()=>doDelete({kind:'edge',el:path})}];
-          D.ui?.showCtx?.(e, items);
-        });
+        path.addEventListener('contextmenu', (e)=>{ e.preventDefault(); /* no context menu for edges */ });
       }
-
       applyTypeVisibility();
       updateTransform();
       try { if (globalThis.DepViz?.state?.slice) applySliceOverlay(globalThis.DepViz.state.slice); } catch {}
@@ -793,7 +816,6 @@
         { id:'focus', label:`Focus function: ${nameOnly}`, run: ()=>{ try { state.focusId = n.id; state.focusModuleId = null; applyTypeVisibility(); centerOnNode(n); } catch{} } },
         { id:'slice_out', label:'Impact slice (outbound)', run: ()=>{ const s=computeSlice(n.id,'out'); applySliceOverlay(s); postImpactSummary(s,'out'); } },
         { id:'slice_in',  label:'Reverse slice (inbound)', run: ()=>{ const s=computeSlice(n.id,'in');  applySliceOverlay(s); postImpactSummary(s,'in'); } },
-        { id:'delete', label:'Remove from canvas', run: ()=> doDelete({ kind:'func', id: n.id }) }
       ];
       if (!n.docked) {
         items.unshift({ id:'reattach_parent', label:'Re-attach to parent', run: ()=> reattachFuncById(n.id) });
