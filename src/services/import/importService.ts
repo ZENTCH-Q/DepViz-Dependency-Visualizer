@@ -188,6 +188,77 @@ export class ImportService {
     }
   }
 
+  // NEW: live import from in-memory text (no disk read)
+  async importText(
+    uri: vscode.Uri,
+    text: string,
+    panel: vscode.WebviewPanel,
+    token?: vscode.CancellationToken,
+    stats?: BatchStats
+  ): Promise<void> {
+    try {
+      if (token?.isCancellationRequested) return;
+
+      // Skip obviously huge buffers
+      if (text.length > this.currentMaxFileSize()) {
+        stats && stats.skippedBySize++;
+        return;
+      }
+      // Honor extension skip list (e.g. images accidentally opened)
+      if (SKIP_EXTS.has(extOf(uri.path))) {
+        stats && stats.skippedByExt++;
+        return;
+      }
+
+      const fingerprint = hashString(text);
+      const key = normalizePath(uri.fsPath);
+      const previous = this.fingerprints.get(key);
+      if (previous === fingerprint) return; // unchanged snapshot of text
+      this.fingerprints.set(key, fingerprint);
+
+      try { this.parseService.invalidate(uri.fsPath); } catch {}
+
+      let result: ParseResult;
+      try {
+        // crucial difference: feed in-memory text directly
+        result = await this.parseService.parseFile(uri, text);
+      } catch (err: any) {
+        stats && (stats.failed++);
+        ImportService.out.appendLine(`[importText] ${uri.fsPath}: ${err?.message ?? String(err)}`);
+        maybeWarnLspOnce(err?.message);
+        throw err;
+      }
+
+      const artifacts: GraphArtifacts = { nodes: result.nodes, edges: result.edges };
+      const ok = await panel.webview.postMessage({ type: 'addArtifacts', payload: artifacts });
+      if (!ok) {
+        stats && (stats.failed++);
+        throw new Error('Webview rejected message');
+      }
+
+      // No batch stats increment here by default; live updates are frequent.
+      this.onArtifacts(artifacts);
+
+      for (const d of (result.diagnostics || [])) {
+        ImportService.out.appendLine(`[${d.severity}] ${d.file}: ${d.message}`);
+      }
+
+      // Best-effort cross-file calls on live edits — can be noisy, keep behind setting.
+      const cfg = vscode.workspace.getConfiguration('depviz');
+      const enableXfile = cfg.get<boolean>('crossFileCalls', true);
+      if (enableXfile && result.status !== 'nolsp') {
+        try {
+          await resolveCrossFileCallsForFile(uri, this.parseService, panel.webview);
+        } catch (e) {
+          ImportService.out.appendLine(`[xfile-live] ${uri.fsPath}: ${String((e as Error)?.message || e)}`);
+        }
+      }
+    } catch (err) {
+      if (stats && !/Webview rejected/.test(String(err))) stats.failed++;
+      throw err;
+    }
+  }
+
   resetFingerprints(): void {
     this.fingerprints.clear();
     this.totals.modules = 0;
