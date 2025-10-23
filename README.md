@@ -77,4 +77,4 @@ It won’t touch your code. It only reads files and writes snapshots you save.
 
 **TL;DR:** drag code in, see who calls who, slice blast radius, export receipts.
 
-This extension is a prototype I'm working on to make it robust and reliable to stay tune
+This extension is a prototype I'm working on to make it robust and reliable. stay tune :)
