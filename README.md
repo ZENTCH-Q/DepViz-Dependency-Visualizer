@@ -1,4 +1,4 @@
-# DepViz — Call Graphs for VS Code
+# DepViz — Call Graphs for VS Code (
 
 Interactive **code maps** in **VS Code**. See **who calls what**, how modules → classes → functions connect, with **call** (solid, arrowed) and **import** (dashed) edges. **Python / TypeScript / JavaScript**. Export stuff.
 
@@ -76,3 +76,5 @@ It won’t touch your code. It only reads files and writes snapshots you save.
 ---
 
 **TL;DR:** drag code in, see who calls who, slice blast radius, export receipts.
+
+This extension is a prototype I'm working on to make it robust and reliable to stay tune
